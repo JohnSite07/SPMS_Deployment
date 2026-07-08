@@ -106,4 +106,8 @@ Partially executed 2026-07-08; remaining steps blocked on user input.
 - Committed handover guide: [guides/developer-handover.md](../guides/developer-handover.md) (placeholder-valued, credentials policy stated up front).
 - Filled private copy generated at `Temp/developer-handover-FILLED.md` (gitignored) with real project ID, service URL, instance connection name — no secret values.
 
-**Blocked on user:** developers' Google emails (→ tfvars + apply) and GitHub usernames (→ repo collaborators); then the cold dry run + written confirmation, and this PRD flips to Done.
+**Update 2026-07-08 (later):** developer details received (2 developers). IAM grants applied — 20 added (4 project roles + 6 per-secret accessors × 2), verified in the project IAM policy; GitHub write invites sent to both. Emails live only in the untracked tfvars, per the no-PII-in-repo rule.
+
+**Open items:**
+1. **CD convergence decision (user):** the repo is public, so passing `developer_emails` to the pipeline would print the gmails in world-readable Actions logs; until decided (accept exposure / make repo private / switch grants to a Google Group), any CD `terraform apply` from a non-docs push will remove the grants — re-apply locally from tfvars if that happens (documented risk, chosen over exposure-by-default).
+2. Developers accept invites, receive the filled handover copy, one runs the cold dry run → written confirmation → Done.
