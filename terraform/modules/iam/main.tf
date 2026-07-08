@@ -38,6 +38,10 @@ locals {
     "roles/serviceusage.serviceUsageAdmin",
     "roles/iam.serviceAccountAdmin",
     "roles/resourcemanager.projectIamAdmin",
+    # Terraform plan/apply must read+manage the WIF pool/provider it declares;
+    # none of the roles above cover iam.workloadIdentityPools.* (found live:
+    # first CI plan failed IAM_PERMISSION_DENIED refreshing the pool).
+    "roles/iam.workloadIdentityPoolAdmin",
   ]
 }
 
@@ -85,6 +89,16 @@ resource "google_project_iam_member" "deployer" {
 resource "google_service_account_iam_member" "deployer_run_as_runtime" {
   service_account_id = google_service_account.runtime.name
   role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.deployer.email}"
+}
+
+# The billing budget lives on the billing ACCOUNT, not the project — project
+# roles grant nothing there. costsManager is the narrowest role that lets the
+# pipeline's terraform apply read/manage budgets (it cannot change payment
+# settings or link/unlink projects).
+resource "google_billing_account_iam_member" "deployer_costs_manager" {
+  billing_account_id = var.billing_account_id
+  role               = "roles/billing.costsManager"
   member             = "serviceAccount:${google_service_account.deployer.email}"
 }
 
