@@ -42,3 +42,8 @@ variable "github_repository" {
   type        = string
   default     = "JohnSite07/SPMS_Deployment"
 }
+
+variable "billing_account_id" {
+  description = "Billing account the budget lives on; deployer needs costsManager there to manage it via terraform apply."
+  type        = string
+}

@@ -45,6 +45,7 @@ module "iam" {
 
   document_bucket_name = module.data.document_bucket_name
   github_repository    = var.github_repository
+  billing_account_id   = var.billing_account_id
 }
 
 module "app" {
