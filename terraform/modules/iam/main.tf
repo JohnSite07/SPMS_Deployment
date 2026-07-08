@@ -38,6 +38,10 @@ locals {
     "roles/serviceusage.serviceUsageAdmin",
     "roles/iam.serviceAccountAdmin",
     "roles/resourcemanager.projectIamAdmin",
+    # Terraform plan/apply must read+manage the WIF pool/provider it declares;
+    # none of the roles above cover iam.workloadIdentityPools.* (found live:
+    # first CI plan failed IAM_PERMISSION_DENIED refreshing the pool).
+    "roles/iam.workloadIdentityPoolAdmin",
   ]
 }
 
