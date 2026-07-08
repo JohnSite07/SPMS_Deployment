@@ -34,14 +34,17 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 
 ### Deployment
 - [GCP one-time bootstrap](deployment/gcp-setup.md) — project/billing setup, API enablement, Terraform state bucket, `terraform init` pattern.
+- [CI/CD pipeline](deployment/pipeline.md) — `ci.yml`/`cd.yml` stages, branch protection, Actions variables, and the platform quirks hit building it.
 
 ### Runbooks
 - [Stop / start Cloud SQL](runbooks/stop-start-cloud-sql.md) — the #1 cost lever between work sessions.
 - [Teardown](runbooks/teardown.md) — full environment teardown after grading.
 - [Cost check](runbooks/cost-check.md) — daily/weekly spend sanity check against the $300 budget.
+- [Roll back a Cloud Run revision](runbooks/rollback.md) — manual traffic re-pointing and re-running a failed CD run.
+- [Rotate a secret](runbooks/secret-rotation.md) — add a Secret Manager version and get running instances to pick it up.
 
 ### Guides
-- _(none yet)_
+- [Developer handover](guides/developer-handover.md) — placeholder-valued onboarding guide for the Developer team: quick start, endpoints, DB access, credentials, env contract, ship process, open decisions, cost etiquette.
 
 ### Milestones
 - [Milestone source documents (M1–M4)](milestones/README.md)

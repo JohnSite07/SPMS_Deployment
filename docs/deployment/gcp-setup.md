@@ -25,7 +25,7 @@ gcloud auth application-default set-quota-project <PROJECT_ID>
 
 ## 3. Enable required APIs
 
-Twelve APIs cover everything through PRD 0002 (private-IP Cloud SQL needs `servicenetworking`):
+Thirteen APIs cover the estate through PRD 0005 (private-IP Cloud SQL needs `servicenetworking`; keyless CI/CD needs the Cloud Billing API — see the note below):
 
 ```bash
 gcloud services enable \
@@ -41,10 +41,13 @@ gcloud services enable \
   servicenetworking.googleapis.com \
   billingbudgets.googleapis.com \
   cloudresourcemanager.googleapis.com \
+  cloudbilling.googleapis.com \
   --project=<PROJECT_ID>
 ```
 
 Verify: `gcloud services list --enabled --project=<PROJECT_ID>`.
+
+**Why `cloudbilling.googleapis.com` (the 13th API):** the CI/CD pipeline's `terraform apply` manages the `google_billing_budget` resource, which lives on the billing account rather than the project. Project-level IAM roles don't reach it — the deployer service account also needs `roles/billing.costsManager` granted **on the billing account itself** (see [terraform/modules/iam/](../../terraform/modules/iam/) and [ADR 0003](../decisions/0003-two-service-accounts-and-keyless-wif.md)), in addition to this API being enabled on the project. This was found live during [PRD 0005](../action_plan/0005-cicd-pipeline.md#outcome)'s first keyless `terraform plan` runs, not anticipated up front — flagged here so a fresh project bootstrap doesn't rediscover it the hard way.
 
 ## 4. Bootstrap the Terraform state bucket
 
@@ -105,7 +108,7 @@ Recorded here so they are not re-debugged. See [terraform/main.tf](../../terrafo
 
 | Check | Command | Expected |
 | --- | --- | --- |
-| APIs enabled | `gcloud services list --enabled --project=<PROJECT_ID>` | all 12 APIs listed |
+| APIs enabled | `gcloud services list --enabled --project=<PROJECT_ID>` | all 13 APIs listed |
 | State bucket exists, versioned | `gcloud storage buckets describe gs://<PROJECT_ID>-tfstate` | `versioning: enabled`, `publicAccessPrevention: enforced` |
 | Backend initialized | `gcloud storage ls gs://<PROJECT_ID>-tfstate` | state object present after `terraform init`/`apply` |
 | Budget live | `gcloud billing budgets list --billing-account=<BILLING_ACCOUNT_ID>` | budget with 3 thresholds (50/90/100%) |
