@@ -13,6 +13,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 | [runbooks/](runbooks/) | Step-by-step operational procedures (teardown, secret rotation, cost checks, stop/start DB). |
 | [guides/](guides/) | Developer how-tos and onboarding. |
 | [milestones/](milestones/) | The original PRG800 academic deliverables (M1–M4), kept verbatim as source of truth. |
+| [action_plan/](action_plan/) | PRDs — plans of record written and approved before executing substantial work (see [`.claude/rules/action-plan.md`](../.claude/rules/action-plan.md)). |
 
 ## Index
 
@@ -40,6 +41,9 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 
 ### Milestones
 - [Milestone source documents (M1–M4)](milestones/README.md)
+
+### Action plans
+- [PRD index](action_plan/README.md) · [PRD template](action_plan/_template.md)
 
 ---
 

@@ -13,6 +13,7 @@ All project documentation lives under `docs/` and follows a fixed taxonomy. Keep
 | `docs/runbooks/` | Step-by-step operational procedures an operator follows under time pressure. | teardown, secret rotation, stop/start Cloud SQL, cost check |
 | `docs/guides/` | Developer-facing how-tos and onboarding. | local dev, running tests, contributing |
 | `docs/milestones/` | Original PRG800 academic deliverables (M1–M4), kept verbatim as source of truth. Do not edit the binaries. | the milestone PDFs/DOCX |
+| `docs/action_plan/` | PRDs — plans of record written and approved *before* executing substantial work. Governed by [`action-plan.md`](action-plan.md) (required sections, numbering, approval gate). Written by the main session, which assigns the agents. | `0001-terraform-foundation.md` |
 
 `docs/README.md` is the index — every new top-level doc gets a line there.
 
