@@ -15,7 +15,7 @@ Terraform needs a remote backend to exist before it can run `terraform init` —
 - **Uniform bucket-level access** — IAM-only access control, no legacy ACLs.
 - **Public access prevention enforced** — defense-in-depth; state must never be reachable outside the project regardless of future IAM mistakes.
 
-Because it sits outside Terraform's lifecycle, it is also the last thing deleted at teardown — see `docs/runbooks/` (teardown runbook, when written) and the note in [PRD 0001's Additional considerations](../action_plan/0001-terraform-foundation.md#additional-considerations).
+Because it sits outside Terraform's lifecycle, it is also the last thing deleted at teardown — see [runbooks/teardown.md](../runbooks/teardown.md) and the note in [PRD 0001's Additional considerations](../action_plan/0001-terraform-foundation.md#additional-considerations).
 
 **(b) `backend.tf` declares an empty, partial `backend "gcs" {}` block** (see [terraform/backend.tf](../../terraform/backend.tf)). The real bucket name and prefix are never written into a tracked file. They are supplied at init time via an untracked `backend.hcl` (gitignored, see [.gitignore](../../.gitignore)):
 

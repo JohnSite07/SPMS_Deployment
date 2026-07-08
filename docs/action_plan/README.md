@@ -9,7 +9,7 @@ A PRD must be **Approved** by the user before execution starts. Once executed, i
 | PRD | Title | Status |
 | --- | --- | --- |
 | [0001](0001-terraform-foundation.md) | Terraform Foundation & GCP Bootstrap | Done |
-| [0002](0002-network-and-data.md) | Network & Data Layer (VPC, Cloud SQL, document bucket) | Draft |
+| [0002](0002-network-and-data.md) | Network & Data Layer (VPC, Cloud SQL, document bucket) | Done |
 | [0003](0003-iam-and-wif.md) | Identity: Service Accounts & Workload Identity Federation | Draft |
 | [0004](0004-app-runtime.md) | Application Runtime: Artifact Registry, Secrets, Cloud Run | Draft |
 | [0005](0005-cicd-pipeline.md) | CI/CD Pipeline & App Skeleton | Draft |

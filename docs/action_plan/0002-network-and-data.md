@@ -4,7 +4,7 @@ Provision the private network path and the stateful backbone: VPC, Cloud SQL (My
 
 | | |
 | --- | --- |
-| **Status** | Draft |
+| **Status** | Done (2026-07-08) |
 | **Date** | 2026-07-08 |
 | **Author** | DevOps (main session) |
 
@@ -88,4 +88,11 @@ gcloud storage buckets describe gs://<PROJECT_ID>-spms-documents
 
 ## Outcome
 
-_Pending execution._
+Executed 2026-07-08. All 13 resources live and verified: VPC/subnet/PSA, Cloud SQL `RUNNABLE` with a single PRIVATE address and `ipv4Enabled: false`, daily backups + binary-log PITR, document bucket (uniform access, public-access-prevention enforced, 365-day + abort-multipart lifecycle), `db-user`/`db-password` secrets with enabled versions and no plaintext in any plan/output. infra-reviewer verdict pre-apply: safe, zero blockers/warnings. Deviations from plan:
+
+1. **MySQL 8.0, not 8.4.** Cloud SQL rejects `db-f1-micro` for MySQL 8.4 (8.4 requires the Enterprise **Plus** edition; its smallest tiers cost hundreds/month). Switched to `MYSQL_8_0` with `edition = "ENTERPRISE"` — preserves the cost design; the M4 spec's "MySQL 8" schema is unaffected. **Flag for the Developer team** (their Part II DDL targets MySQL 8 generically, so no expected impact).
+2. **`disk_autoresize = false`** added (provider defaults true): 10 GB is a hard cap, not a starting point — app hits disk-full rather than silently growing cost.
+3. **SQL user host defaults to `%`** — acceptable only because the instance is private-IP-only; reviewer note recorded so it is revisited if a public IP is ever added.
+4. **Terraform state contains the DB password** (inherent to managing the SQL user + secret version). The state bucket's access control is the operative boundary; access currently limited to the owner account.
+
+Runbooks delivered: [stop/start Cloud SQL](../runbooks/stop-start-cloud-sql.md), [teardown](../runbooks/teardown.md) (PSA retry + state-bucket-last ordering), [cost check](../runbooks/cost-check.md). Cost meter running: ~$0.33/day while the instance is up.

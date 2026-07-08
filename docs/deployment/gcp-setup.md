@@ -60,7 +60,7 @@ gcloud storage buckets create gs://<PROJECT_ID>-tfstate \
 gcloud storage buckets update gs://<PROJECT_ID>-tfstate --versioning
 ```
 
-This bucket is outside Terraform's lifecycle: `terraform destroy` will never remove it. It must be deleted manually, last, at full teardown — see `docs/runbooks/` (teardown runbook) once written.
+This bucket is outside Terraform's lifecycle: `terraform destroy` will never remove it. It must be deleted manually, last, at full teardown — see [runbooks/teardown.md](../runbooks/teardown.md).
 
 ## 5. terraform.tfvars and backend.hcl (untracked)
 

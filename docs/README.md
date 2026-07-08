@@ -29,13 +29,16 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 ### Decisions
 - [0001 — Cloud platform, compute, IaC, and CI/CD](decisions/0001-platform-and-tooling.md)
 - [0002 — Terraform state bootstrap and partial backend configuration](decisions/0002-terraform-state-bootstrap-and-partial-backend.md)
+- [0003 — Two service accounts and keyless Workload Identity Federation](decisions/0003-two-service-accounts-and-keyless-wif.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment
 - [GCP one-time bootstrap](deployment/gcp-setup.md) — project/billing setup, API enablement, Terraform state bucket, `terraform init` pattern.
 
 ### Runbooks
-- _(none yet)_
+- [Stop / start Cloud SQL](runbooks/stop-start-cloud-sql.md) — the #1 cost lever between work sessions.
+- [Teardown](runbooks/teardown.md) — full environment teardown after grading.
+- [Cost check](runbooks/cost-check.md) — daily/weekly spend sanity check against the $300 budget.
 
 ### Guides
 - _(none yet)_
