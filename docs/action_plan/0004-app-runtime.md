@@ -4,7 +4,7 @@ Provision the compute path: the image repository, the remaining application secr
 
 | | |
 | --- | --- |
-| **Status** | Draft |
+| **Status** | Done (2026-07-08) |
 | **Date** | 2026-07-08 |
 | **Author** | DevOps (main session) |
 
@@ -88,4 +88,10 @@ gcloud secrets list --filter="name~spms" --format="table(name)"
 
 ## Outcome
 
-_Pending execution._
+Executed 2026-07-08. 17 resources applied (0 changes/destroys to the prior 21); infra-reviewer pre-apply verdict: safe, zero blockers. Verified post-apply: service URL live over HTTPS (200 from the hello container), all five sensitive env vars injected via `secretKeyRef` (never literal), service identity is the runtime SA, all six secrets exist, `allUsers` invoker is the only public grant in the estate. Deviations/notes:
+
+1. **Env contract as built** (handover-critical, for PRD 0006): plain — `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DOCUMENTS_BUCKET`; secret-ref — `DB_PASSWORD`, `JWT_SIGNING_KEY`, `AES_ENCRYPTION_KEY`, `SMTP_USERNAME`, `SMTP_PASSWORD`; `PORT` injected by Cloud Run.
+2. **`AES_ENCRYPTION_KEY` is base64-encoded 32 raw bytes** (`random_bytes`) — the app must base64-decode before use (reviewer note; must appear in the handover doc).
+3. **SMTP secrets hold literal placeholders** (`PLACEHOLDER-set-real-value-via-rotation`) pending the Developer team's provider choice; rotation = `gcloud secrets versions add`.
+4. **AR cleanup policy** is the required KEEP(10)/DELETE(ANY) pair. **`ignore_changes` on the container image** keeps Terraform from fighting CD's SHA deploys.
+5. Scale-to-zero not yet observed (requires ~15 min idle); expected per `min_instance_count = 0` — will be confirmed incidentally during PRD 0005's E2E run.

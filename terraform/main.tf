@@ -10,7 +10,6 @@ provider "google" {
 
 # --- Module wiring -----------------------------------------------------
 # Modules are single-purpose (per CLAUDE.md) and are wired together here.
-# Filled in by a later PRD (0004+: app/remaining secrets).
 
 module "network" {
   source     = "./modules/network"
@@ -41,21 +40,37 @@ module "iam" {
   source     = "./modules/iam"
   project_id = var.project_id
 
-  secret_ids = [
-    module.secrets.db_user_secret_id,
-    module.secrets.db_password_secret_id,
-  ]
+  # All 6 app secrets — the runtime SA gets per-secret secretAccessor on each.
+  secret_ids = module.secrets.all_secret_ids
 
   document_bucket_name = module.data.document_bucket_name
   github_repository    = var.github_repository
 }
 
-# module "app" {
-#   source     = "./modules/app"
-#   project_id = var.project_id
-#   region     = var.region
-#   # vpc_self_link = module.network.vpc_self_link
-# }
+module "app" {
+  source     = "./modules/app"
+  project_id = var.project_id
+  region     = var.region
+
+  runtime_sa_email = module.iam.runtime_sa_email
+  network_id       = module.network.network_id
+  subnet_id        = module.network.subnet_id
+
+  db_host               = module.data.private_ip_address
+  db_name               = module.data.database_name
+  db_user_name          = module.data.user_name
+  documents_bucket_name = module.data.document_bucket_name
+
+  db_password_secret_id        = module.secrets.db_password_secret_id
+  jwt_signing_key_secret_id    = module.secrets.jwt_signing_key_secret_id
+  aes_encryption_key_secret_id = module.secrets.aes_encryption_key_secret_id
+  smtp_username_secret_id      = module.secrets.smtp_username_secret_id
+  smtp_password_secret_id      = module.secrets.smtp_password_secret_id
+
+  # Cloud Run must not attempt to read secrets before the runtime SA's
+  # per-secret accessor bindings (module.iam) exist.
+  depends_on = [module.iam]
+}
 
 # --- Cost guardrail: billing budget --------------------------------------
 # $300 USD budget scoped to this project, alerting at 50/90/100% of spend.

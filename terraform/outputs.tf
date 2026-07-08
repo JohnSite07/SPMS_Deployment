@@ -16,3 +16,13 @@ output "deployer_sa_email" {
   description = "Deployer service account email — GitHub Actions variable DEPLOYER_SA."
   value       = module.iam.deployer_sa_email
 }
+
+output "service_url" {
+  description = "Public HTTPS URL of the Cloud Run service."
+  value       = module.app.service_url
+}
+
+output "artifact_registry_repo" {
+  description = "Artifact Registry Docker push/pull endpoint CD builds/pushes SHA-tagged images to."
+  value       = module.app.artifact_registry_repository_url
+}
