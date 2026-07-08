@@ -1,0 +1,145 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+# Only CD authenticates to GCP; CI is read-only. WIF needs the OIDC token
+# (id-token: write) and nothing else at the workflow level.
+permissions:
+  contents: read
+  id-token: write
+
+# Deploys must not race each other against the same Cloud Run service —
+# queue runs instead of letting them interleave.
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+env:
+  REGION: us-central1
+  SERVICE: spms
+  IMAGE: us-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/spms/app:${{ github.sha }}
+
+jobs:
+  deploy:
+    name: Build, apply, deploy, verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SA }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Setup buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Images are tagged by commit SHA only — never :latest — so every
+      # running revision traces back to an exact commit.
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          push: true
+          tags: ${{ env.IMAGE }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.GCP_PROJECT_ID }}-tfstate" \
+            -backend-config="prefix=terraform/state"
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: terraform apply -auto-approve -no-color
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+          TF_VAR_billing_account_id: ${{ vars.BILLING_ACCOUNT_ID }}
+
+      # Deploy the new revision with zero traffic. The Cloud Run resource's
+      # `lifecycle.ignore_changes` on image (see terraform/modules/app) means
+      # this step and the prior `terraform apply` never fight over the image.
+      - name: Deploy candidate revision (no traffic)
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --image ${{ env.IMAGE }} \
+            --no-traffic \
+            --tag candidate \
+            --quiet
+
+      - name: Resolve candidate URL
+        id: candidate
+        run: |
+          set -euo pipefail
+          url=$(gcloud run services describe ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --format=json \
+            | jq -r '.status.traffic[] | select(.tag=="candidate") | .url' \
+            | head -n1)
+          if [ -z "$url" ] || [ "$url" = "null" ]; then
+            echo "Could not resolve candidate URL" >&2
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Candidate URL: $url"
+
+      # Smoke-test the candidate revision directly, before any traffic shift.
+      # Traffic only moves in the next step, and only if this succeeds.
+      - name: Smoke test candidate
+        run: |
+          set -euo pipefail
+          url="${{ steps.candidate.outputs.url }}/healthz"
+          attempts=5
+          delay=10
+          for i in $(seq 1 "$attempts"); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url" || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "Smoke test passed on attempt $i (HTTP $code)"
+              exit 0
+            fi
+            echo "Attempt $i/$attempts: HTTP $code — retrying in ${delay}s"
+            sleep "$delay"
+          done
+          echo "Smoke test failed after $attempts attempts — leaving traffic on previous revision" >&2
+          exit 1
+
+      # Reached only if the smoke test above succeeded. On failure the job
+      # already exited, so 100% of traffic stays on the last good revision —
+      # the deploy is a no-op from the user's perspective.
+      - name: Shift traffic to candidate
+        run: |
+          gcloud run services update-traffic ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --to-latest \
+            --quiet
+
+      - name: Verify service after traffic shift
+        run: |
+          set -euo pipefail
+          url=$(gcloud run services describe ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)')
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$url/healthz" || echo "000")
+          echo "Final check: $url/healthz -> HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "Service failed post-shift verification" >&2
+            exit 1
+          fi
