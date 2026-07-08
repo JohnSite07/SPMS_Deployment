@@ -4,7 +4,7 @@ Stand up the Terraform skeleton, remote state backend, required GCP APIs, and th
 
 | | |
 | --- | --- |
-| **Status** | Draft |
+| **Status** | Done (2026-07-08) |
 | **Date** | 2026-07-08 |
 | **Author** | DevOps (main session) |
 
@@ -107,4 +107,13 @@ terraform -chdir=terraform apply tfplan   # only after user approves the plan
 
 ## Outcome
 
-_Pending execution._
+Executed 2026-07-08. All success criteria met: scaffold validated, state in the versioned GCS backend, plan/apply clean (1 add — the budget), APIs enabled, budget live with 50/90/100% thresholds, infra-reviewer pass. Deviations from plan:
+
+1. **New dedicated project created** (no SPMS project existed). ID recorded in untracked `terraform/terraform.tfvars` and `backend.hcl` — not in the repo, per docs rule.
+2. **Budget `projects` filter needed the project *number*, not ID** — caught by infra-reviewer pre-apply (plan alone would not have caught it); fixed with a `google_project` data source.
+3. **Provider needed `user_project_override` + `billing_project`** — the Billing Budgets API rejects plain user ADC without a quota project.
+4. **Billing account currency is CAD, not USD** — `currency_code` removed from the budget (defaults to account currency). Budget is **300 CAD**, which alerts *earlier* than 300 USD; acceptable-conservative.
+5. **State bucket hardened** with `public_access_prevention=enforced` (reviewer defense-in-depth note; added to the bootstrap steps above in spirit).
+6. **Backend uses partial config** (`backend.tf` empty; untracked `backend.hcl` supplies bucket) to keep project-derived names out of the public repo — CI/CD will pass the same values from Actions variables (PRD 0005).
+
+Docs follow-ups delegated to documentation-keeper: ADR (state bootstrap + partial backend), `docs/deployment/` GCP setup notes.

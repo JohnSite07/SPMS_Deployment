@@ -23,6 +23,8 @@ npm-debug.log*
 crash.log
 crash.*.log
 *.tfplan
+tfplan
+backend.hcl
 
 # Google Cloud credentials — must never enter the repo
 *credentials*.json
