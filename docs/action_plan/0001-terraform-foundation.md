@@ -15,7 +15,7 @@ As the DevOps team, I want the Terraform project scaffold, a locked/versioned re
 ## Scope
 
 **In scope:**
-- Create the GCP project prerequisites: set the active project, link billing, enable required APIs (`run`, `sqladmin`, `storage`, `secretmanager`, `artifactregistry`, `compute`, `iam`, `iamcredentials`, `sts`, `billingbudgets`, `cloudresourcemanager`, `serviceusage`).
+- Create the GCP project prerequisites: set the active project, link billing, enable required APIs (`run`, `sqladmin`, `storage`, `secretmanager`, `artifactregistry`, `compute`, `iam`, `iamcredentials`, `sts`, `billingbudgets`, `cloudresourcemanager`, `serviceusage`, `servicenetworking` — the last needed by PRD 0002's private-IP Cloud SQL).
 - One-time bootstrap of the **Terraform state bucket** via `gcloud` (versioned, uniform access) — the only resource not managed by Terraform, since the backend must exist before Terraform can run.
 - Scaffold `terraform/` per the target layout: root (`main.tf`, `variables.tf`, `outputs.tf`, `backend.tf`, `versions.tf`) + empty single-purpose modules (`network/`, `iam/`, `data/`, `app/`, `secrets/`).
 - Root variables: `project_id`, `region` (default `us-central1`), `billing_account_id` — values supplied via untracked `terraform.tfvars` (gitignored), never committed.
@@ -59,7 +59,7 @@ gcloud config set project <PROJECT_ID>
 gcloud services enable run.googleapis.com sqladmin.googleapis.com \
   storage.googleapis.com secretmanager.googleapis.com \
   artifactregistry.googleapis.com compute.googleapis.com iam.googleapis.com \
-  iamcredentials.googleapis.com sts.googleapis.com \
+  iamcredentials.googleapis.com sts.googleapis.com servicenetworking.googleapis.com \
   billingbudgets.googleapis.com cloudresourcemanager.googleapis.com
 
 # 3. Bootstrap state bucket (one-time, billable: ~cents)
