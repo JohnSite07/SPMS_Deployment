@@ -108,6 +108,7 @@ Partially executed 2026-07-08; remaining steps blocked on user input.
 
 **Update 2026-07-08 (later):** developer details received (2 developers). IAM grants applied — 20 added (4 project roles + 6 per-secret accessors × 2), verified in the project IAM policy; GitHub write invites sent to both. Emails live only in the untracked tfvars, per the no-PII-in-repo rule.
 
+**Update 2026-07-08 (final):** user chose **Google Group grants** for the public-repo privacy question. Group `spms-developers@googlegroups.com` created by the user with all three developers as members (a third developer, with GitHub invite, was added at this point). Executed: `developer_group` variable added to the iam module (same scoped access shape, `group:` member, empty default = no-op); live swap applied — 20 individual `user:` grants destroyed, 10 `group:` grants added; verified the project IAM policy contains no personal-email bindings. `DEVELOPER_GROUP` Actions variable set; `TF_VAR_developer_group` wired through both workflows, so CD stays converged with zero PII in public logs. Team churn is now a Google Groups membership edit — no Terraform, pipeline, or log changes.
+
 **Open items:**
-1. **CD convergence decision (user):** the repo is public, so passing `developer_emails` to the pipeline would print the gmails in world-readable Actions logs; until decided (accept exposure / make repo private / switch grants to a Google Group), any CD `terraform apply` from a non-docs push will remove the grants — re-apply locally from tfvars if that happens (documented risk, chosen over exposure-by-default).
-2. Developers accept invites, receive the filled handover copy, one runs the cold dry run → written confirmation → Done.
+1. Developers accept GitHub invites, receive the filled handover copy (`Temp/developer-handover-FILLED.md`, updated for group-based access), one runs the cold dry run → written confirmation → Done.
