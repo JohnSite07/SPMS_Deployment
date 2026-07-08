@@ -1,0 +1,35 @@
+# Local scratch / working files
+Temp/
+
+# Node.js (app/)
+node_modules/
+coverage/
+npm-debug.log*
+*.log
+
+# Environment / secrets — never committed (secrets live in GCP Secret Manager)
+.env
+.env.*
+*.env
+
+# Terraform — state, local caches, and variable files that may hold real values
+# (.terraform.lock.hcl IS committed; do not ignore it)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+crash.*.log
+*.tfplan
+
+# Google Cloud credentials — must never enter the repo
+*credentials*.json
+*service-account*.json
+gha-creds-*.json
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+Desktop.ini
