@@ -1,0 +1,25 @@
+{
+  "name": "securevault-app",
+  "version": "0.1.0",
+  "description": "SecureVault (SPMS) - zero-knowledge password manager. Pipeline-verification skeleton; application features are implemented by the Developer team per docs/requirements/.",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "jest",
+    "lint": "eslint ."
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  }
+}
