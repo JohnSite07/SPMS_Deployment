@@ -28,10 +28,11 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 
 ### Decisions
 - [0001 — Cloud platform, compute, IaC, and CI/CD](decisions/0001-platform-and-tooling.md)
+- [0002 — Terraform state bootstrap and partial backend configuration](decisions/0002-terraform-state-bootstrap-and-partial-backend.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment
-- _(none yet)_
+- [GCP one-time bootstrap](deployment/gcp-setup.md) — project/billing setup, API enablement, Terraform state bucket, `terraform init` pattern.
 
 ### Runbooks
 - _(none yet)_

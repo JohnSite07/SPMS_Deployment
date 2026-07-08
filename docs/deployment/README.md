@@ -4,6 +4,8 @@ The CI/CD pipeline, environment setup, and release process: GitHub Actions workf
 
 Document setup steps and process flow. Reference GitHub Actions *variable names* (e.g. `GCP_PROJECT_ID`, `WIF_PROVIDER`, `DEPLOYER_SA`) — never real values, project IDs, or service-account emails.
 
+- [gcp-setup.md](gcp-setup.md) — one-time GCP project bootstrap: billing link, ADC quota project, API enablement, Terraform state bucket, `terraform init` pattern.
+
 ## Open items (pending Developer-team confirmation)
 
 Not decisions — flagged here so they aren't missed once confirmed. See [architecture/system-design-summary.md](../architecture/system-design-summary.md#open-cross-team-items--known-inconsistencies) for full context.
