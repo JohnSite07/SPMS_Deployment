@@ -11,7 +11,10 @@ function createApp() {
   // Health endpoint: used by the CD pipeline's smoke test against the
   // candidate revision before traffic is shifted. Keep it dependency-free
   // (no DB call) so a cold start always answers.
-  app.get('/healthz', (req, res) => {
+  // NOTE: the path must NOT be /healthz — Google Front End reserves that
+  // path on run.app domains and returns its own 404 before the request
+  // reaches the container (found live in the first CD run).
+  app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', service: 'securevault' });
   });
 

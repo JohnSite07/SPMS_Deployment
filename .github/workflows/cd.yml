@@ -106,7 +106,9 @@ jobs:
       - name: Smoke test candidate
         run: |
           set -euo pipefail
-          url="${{ steps.candidate.outputs.url }}/healthz"
+          # /health, not /healthz: Google Front End reserves /healthz on
+          # run.app domains and 404s before the request reaches the container.
+          url="${{ steps.candidate.outputs.url }}/health"
           attempts=5
           delay=10
           for i in $(seq 1 "$attempts"); do
@@ -137,8 +139,8 @@ jobs:
           url=$(gcloud run services describe ${{ env.SERVICE }} \
             --region ${{ env.REGION }} \
             --format='value(status.url)')
-          code=$(curl -s -o /dev/null -w "%{http_code}" "$url/healthz" || echo "000")
-          echo "Final check: $url/healthz -> HTTP $code"
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$url/health" || echo "000")
+          echo "Final check: $url/health -> HTTP $code"
           if [ "$code" != "200" ]; then
             echo "Service failed post-shift verification" >&2
             exit 1
