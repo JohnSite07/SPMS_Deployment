@@ -4,7 +4,7 @@ Grant the Developer team access and deliver a single handover document with ever
 
 | | |
 | --- | --- |
-| **Status** | Draft |
+| **Status** | In Progress (2026-07-08 — blocked on developer emails/GitHub usernames) |
 | **Date** | 2026-07-08 |
 | **Author** | DevOps (main session) |
 
@@ -99,4 +99,11 @@ mysql -h 127.0.0.1 -u <db_user> -p
 
 ## Outcome
 
-_Pending execution._
+Partially executed 2026-07-08; remaining steps blocked on user input.
+
+**Done:**
+- Human-IAM Terraform in `modules/iam/`: `developer_emails` (default `[]`) drives per-developer project roles + per-secret accessor grants via `setproduct`; committed as a verified no-op (`terraform plan`: no changes). Supplying emails via tfvars + one apply activates access. Scope deviation, accepted: `template[0].revision` added to the app module's `ignore_changes` to clear drift created by CD's out-of-band revision naming — found while proving the no-op plan.
+- Committed handover guide: [guides/developer-handover.md](../guides/developer-handover.md) (placeholder-valued, credentials policy stated up front).
+- Filled private copy generated at `Temp/developer-handover-FILLED.md` (gitignored) with real project ID, service URL, instance connection name — no secret values.
+
+**Blocked on user:** developers' Google emails (→ tfvars + apply) and GitHub usernames (→ repo collaborators); then the cold dry run + written confirmation, and this PRD flips to Done.
