@@ -53,4 +53,6 @@ Region is `us-central1` (Tier-1 pricing, free-tier eligible); a one-variable cha
 - Object model → [domain-model.md](domain-model.md)
 - Provisioning, CI/CD, rollback → [deployment/](../deployment/)
 - Why these platform choices → [decisions/0001](../decisions/0001-platform-and-tooling.md)
-- Full deployment spec → [M4 deployment design](../milestones/SecureVault_Milestone4_Deployment.docx)
+- Full deployment spec (Part III excerpt) → [M4 deployment design](../milestones/SecureVault_Milestone4_Deployment.docx)
+- Full four-part system design (software design, database, deployment, test plan) → [M4 System Design PDF](../milestones/SecureVault_Milestone4_System_Design.pdf)
+- Developer-team-owned scope (Parts I, II, IV) at a glance → [system-design-summary.md](system-design-summary.md)

@@ -19,6 +19,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 ### Architecture
 - [Architecture overview](architecture/overview.md) — end-to-end shape, zero-knowledge posture, runtime topology.
 - [Domain model](architecture/domain-model.md) — the 14-class object model (the app data-model blueprint).
+- [System design summary](architecture/system-design-summary.md) — Developer-team-owned Parts I/II/IV of the M4 System Design (software design, database, test plan) at a glance, plus open cross-team items.
 
 ### Requirements
 - [Functional requirements](requirements/functional-requirements.md) — use cases, events, business rules.
