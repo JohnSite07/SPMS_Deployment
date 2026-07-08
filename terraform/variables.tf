@@ -13,3 +13,9 @@ variable "billing_account_id" {
   description = "Billing account ID the project is linked to, used to scope the $300 budget alert. Supplied via terraform.tfvars — never committed."
   type        = string
 }
+
+variable "github_repository" {
+  description = "GitHub \"owner/repo\" allowed to authenticate via Workload Identity Federation and impersonate the deployer service account. The WIF provider's attribute_condition pins to exactly this repository."
+  type        = string
+  default     = "JohnSite07/SPMS_Deployment"
+}

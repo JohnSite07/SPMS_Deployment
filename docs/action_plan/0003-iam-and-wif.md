@@ -4,7 +4,7 @@ Create the two least-privilege service accounts (runtime vs. deployer) and the k
 
 | | |
 | --- | --- |
-| **Status** | Draft |
+| **Status** | Done (2026-07-08) |
 | **Date** | 2026-07-08 |
 | **Author** | DevOps (main session) |
 
@@ -84,4 +84,4 @@ terraform -chdir=terraform output   # the 3 GitHub-variable values (non-sensitiv
 
 ## Outcome
 
-_Pending execution._
+Executed 2026-07-08. 21 resources applied cleanly (0 changes/destroys to the existing estate); infra-reviewer verdict pre-apply: safe, zero blockers — it verified the full role inventory against this PRD line-by-line, confirmed the WIF `attribute_condition` uses strict string equality on the repository, the `workloadIdentityUser` binding is a repository-scoped `principalSet` (not pool-wide), and zero `google_service_account_key` resources exist. Post-apply checks: both SAs live; provider condition reads exactly as designed; only Google `SYSTEM_MANAGED` keys on the deployer (no user-managed keys). The three root outputs for PRD 0005's GitHub variables are live (`gcp_project_id`, `wif_provider`, `deployer_sa_email`). No deviations from plan. ADR: [0003 — two service accounts and keyless WIF](../decisions/0003-two-service-accounts-and-keyless-wif.md); WIF soft-delete note added to the teardown runbook.

@@ -10,36 +10,51 @@ provider "google" {
 
 # --- Module wiring -----------------------------------------------------
 # Modules are single-purpose (per CLAUDE.md) and are wired together here.
-# Filled in by later PRDs (0002: network/data, 0003: iam, 0004+: app/secrets).
+# Filled in by a later PRD (0004+: app/remaining secrets).
 
-# module "network" {
-#   source     = "./modules/network"
-#   project_id = var.project_id
-#   region     = var.region
-# }
+module "network" {
+  source     = "./modules/network"
+  project_id = var.project_id
+  region     = var.region
+}
 
-# module "iam" {
-#   source     = "./modules/iam"
-#   project_id = var.project_id
-# }
+module "secrets" {
+  source     = "./modules/secrets"
+  project_id = var.project_id
+}
 
-# module "data" {
-#   source     = "./modules/data"
-#   project_id = var.project_id
-#   region     = var.region
-#   # network_id = module.network.network_id
-# }
+module "data" {
+  source     = "./modules/data"
+  project_id = var.project_id
+  region     = var.region
+  network_id = module.network.network_id
+
+  db_user_name = module.secrets.db_user_name
+  db_password  = module.secrets.db_password
+
+  # Cloud SQL private-IP creation requires the network module's Private
+  # Services Access connection to exist first.
+  depends_on = [module.network]
+}
+
+module "iam" {
+  source     = "./modules/iam"
+  project_id = var.project_id
+
+  secret_ids = [
+    module.secrets.db_user_secret_id,
+    module.secrets.db_password_secret_id,
+  ]
+
+  document_bucket_name = module.data.document_bucket_name
+  github_repository    = var.github_repository
+}
 
 # module "app" {
 #   source     = "./modules/app"
 #   project_id = var.project_id
 #   region     = var.region
 #   # vpc_self_link = module.network.vpc_self_link
-# }
-
-# module "secrets" {
-#   source     = "./modules/secrets"
-#   project_id = var.project_id
 # }
 
 # --- Cost guardrail: billing budget --------------------------------------
