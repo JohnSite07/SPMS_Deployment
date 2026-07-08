@@ -3,6 +3,12 @@ name: CD
 on:
   push:
     branches: [main]
+    # Docs-only pushes must not burn a build/deploy cycle. Do NOT mirror this
+    # in ci.yml: its jobs are required status checks, and path-skipped
+    # required checks would block docs-only PRs from ever merging.
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
 
 # Only CD authenticates to GCP; CI is read-only. WIF needs the OIDC token
 # (id-token: write) and nothing else at the workflow level.

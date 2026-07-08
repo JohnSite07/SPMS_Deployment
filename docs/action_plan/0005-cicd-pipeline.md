@@ -4,7 +4,7 @@ Stand up the two GitHub Actions workflows, repo configuration, and a minimal Exp
 
 | | |
 | --- | --- |
-| **Status** | Draft |
+| **Status** | Done (2026-07-08) |
 | **Date** | 2026-07-08 |
 | **Author** | DevOps (main session) |
 
@@ -96,4 +96,17 @@ curl -s -o /dev/null -w "%{http_code}\n" "$SERVICE_URL/healthz"    # 200 from sk
 
 ## Outcome
 
-_Pending execution._
+Executed 2026-07-08. All success criteria met, several via *real* failures rather than staged drills — better evidence than the plan called for:
+
+- **CI gates proven live:** the first two `terraform plan` runs on PR #1 failed on genuine permission gaps (below) and blocked merge; after fixes, both checks went green and the PR merged. App job passed throughout (lint + Jest).
+- **Keyless end-to-end:** WIF OIDC exchange worked on the first attempt; `gh secret list` is empty — zero repo secrets, keys nowhere.
+- **CD proven:** SHA-tagged image built and pushed to Artifact Registry, `terraform apply` clean in-pipeline, no-traffic candidate deploy, smoke test, traffic shift, post-shift verify. Live URL serves the skeleton (`/health` → `{"status":"ok"}`).
+- **Rollback-by-default proven by a real incident:** the first CD run's smoke test failed 5× and left 100% of traffic on the previous revision — users saw no disruption. Root cause was a platform quirk, not app or pipeline logic.
+
+Deviations from plan (all applied via Terraform / recorded here):
+
+1. **`/healthz` is unusable on Cloud Run:** Google Front End reserves that path on `run.app` domains and 404s before the container sees the request. Health endpoint renamed to **`/health`** in the app and both workflow smoke checks. This is the kind of fact that must reach the Developer team's handover doc.
+2. **Deployer needed two more grants** discovered by the first keyless plans: `roles/iam.workloadIdentityPoolAdmin` (project) and `roles/billing.costsManager` (on the billing account — budgets live there, project roles don't reach them). Both added to the iam module; the Cloud Billing API became the 13th enabled API (gcp-setup doc updated in the docs pass).
+3. **A 4th GitHub Actions variable, `BILLING_ACCOUNT_ID`** — CD's `terraform apply` needs it (no default in variables.tf); it is an identifier, not a credential, consistent with the variables-not-secrets design.
+4. **Branch protection contexts fixed** to the jobs' display names (`App checks (lint + test)`, `Terraform checks (fmt/validate/plan)`) — the original job-ID contexts would have blocked every merge. `enforce_admins=false` retained as the documented bootstrap carve-out.
+5. **`paths-ignore` for `docs/**` and `**.md` added to cd.yml** so docs-only pushes don't burn a build/deploy; deliberately NOT added to ci.yml (required checks + path filtering = unmergeable docs PRs).
