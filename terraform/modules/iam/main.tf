@@ -189,3 +189,41 @@ resource "google_secret_manager_secret_iam_member" "developer_secret_accessor" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "user:${each.value.email}"
 }
+
+# --- Developer team: group-based human read access --------------------------
+# Same access shape as the per-email grants above, but via a Google Group —
+# the repo is public, so individual emails must not reach CI/CD logs. The
+# transition to group-only access is a tfvars change (set developer_group,
+# empty out developer_emails), not a code change; both mechanisms can run
+# side by side during the switch. Empty var.developer_group (the default)
+# makes both locals below empty maps, so this block is a true no-op until a
+# real group email is supplied.
+
+locals {
+  developer_group_role_grants = var.developer_group == "" ? {} : {
+    for role in local.developer_project_roles :
+    role => role
+  }
+
+  developer_group_secret_grants = var.developer_group == "" ? {} : {
+    for secret_id in var.secret_ids :
+    secret_id => secret_id
+  }
+}
+
+resource "google_project_iam_member" "developer_group" {
+  for_each = local.developer_group_role_grants
+
+  project = var.project_id
+  role    = each.value
+  member  = "group:${var.developer_group}"
+}
+
+resource "google_secret_manager_secret_iam_member" "developer_group_secret_accessor" {
+  for_each = local.developer_group_secret_grants
+
+  project   = var.project_id
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "group:${var.developer_group}"
+}

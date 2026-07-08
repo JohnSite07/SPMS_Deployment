@@ -25,3 +25,9 @@ variable "developer_emails" {
   type        = list(string)
   default     = []
 }
+
+variable "developer_group" {
+  description = "Google Group email granted the same read-only Developer-team access as developer_emails, via group: membership instead of per-person user: grants — keeps individual emails out of a public repo's CI/CD logs. Default empty string is a no-op (creates zero resources); going live is a tfvars change."
+  type        = string
+  default     = ""
+}

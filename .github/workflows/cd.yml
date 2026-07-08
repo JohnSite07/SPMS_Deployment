@@ -78,6 +78,10 @@ jobs:
         env:
           TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
           TF_VAR_billing_account_id: ${{ vars.BILLING_ACCOUNT_ID }}
+          # Google Group address (generic, non-PII) — developer access is
+          # granted to the group, never to personal emails, because these
+          # logs are public. Empty until the DEVELOPER_GROUP variable is set.
+          TF_VAR_developer_group: ${{ vars.DEVELOPER_GROUP }}
 
       # Deploy the new revision with zero traffic. The Cloud Run resource's
       # `lifecycle.ignore_changes` on image (see terraform/modules/app) means

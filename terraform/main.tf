@@ -47,6 +47,7 @@ module "iam" {
   github_repository    = var.github_repository
   billing_account_id   = var.billing_account_id
   developer_emails     = var.developer_emails
+  developer_group      = var.developer_group
 }
 
 module "app" {
