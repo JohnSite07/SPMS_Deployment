@@ -141,6 +141,9 @@ resource "google_cloud_run_v2_service" "spms" {
       template[0].containers[0].image,
       client,
       client_version,
+      # gcloud run deploy assigns the revision name/suffix out-of-band on
+      # every CD deploy; Terraform doesn't set this and must not fight it.
+      template[0].revision,
     ]
   }
 }

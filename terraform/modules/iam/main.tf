@@ -139,3 +139,53 @@ resource "google_service_account_iam_member" "deployer_wif_binding" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.pool.name}/attribute.repository/${var.github_repository}"
 }
+
+# --- Developer team: human read access -------------------------------------
+# Read-only paths only (secrets, logs, DB client, registry/run viewer) — no
+# deploy or IAM rights; shipping happens only through the pipeline. Personal
+# gcloud identities make access individually auditable and revocable (remove
+# the email from developer_emails and re-apply). Empty var.developer_emails
+# (the default) makes both locals below empty maps, so this block is a
+# true no-op until real emails are supplied.
+
+locals {
+  developer_project_roles = [
+    "roles/cloudsql.client",
+    "roles/artifactregistry.reader",
+    "roles/run.viewer",
+    "roles/logging.viewer",
+  ]
+
+  developer_role_grants = {
+    for pair in setproduct(var.developer_emails, local.developer_project_roles) :
+    "${pair[0]}|${pair[1]}" => {
+      email = pair[0]
+      role  = pair[1]
+    }
+  }
+
+  developer_secret_grants = {
+    for pair in setproduct(var.developer_emails, var.secret_ids) :
+    "${pair[0]}|${pair[1]}" => {
+      email     = pair[0]
+      secret_id = pair[1]
+    }
+  }
+}
+
+resource "google_project_iam_member" "developer" {
+  for_each = local.developer_role_grants
+
+  project = var.project_id
+  role    = each.value.role
+  member  = "user:${each.value.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "developer_secret_accessor" {
+  for_each = local.developer_secret_grants
+
+  project   = var.project_id
+  secret_id = each.value.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "user:${each.value.email}"
+}

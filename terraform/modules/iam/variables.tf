@@ -47,3 +47,9 @@ variable "billing_account_id" {
   description = "Billing account the budget lives on; deployer needs costsManager there to manage it via terraform apply."
   type        = string
 }
+
+variable "developer_emails" {
+  description = "Google account emails of Developer-team members granted read-only human access (Cloud SQL client, Artifact Registry reader, Cloud Run viewer, logging viewer, per-secret secretAccessor across all secret_ids). Default empty — access is added by supplying real emails via tfvars; an empty list creates zero resources, so committing this is a no-op until then. Revoke access by removing an email and re-applying."
+  type        = list(string)
+  default     = []
+}

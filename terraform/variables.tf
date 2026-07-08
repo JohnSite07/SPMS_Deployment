@@ -19,3 +19,9 @@ variable "github_repository" {
   type        = string
   default     = "JohnSite07/SPMS_Deployment"
 }
+
+variable "developer_emails" {
+  description = "Google account emails of Developer-team members granted read-only human access. Default empty — the team's emails arrive later via tfvars; an empty list is a no-op (creates zero resources)."
+  type        = list(string)
+  default     = []
+}

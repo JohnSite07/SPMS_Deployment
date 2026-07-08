@@ -51,7 +51,7 @@ SPMS_Deployment/
 Three zones: **GitHub** (code + CI/CD), the **GCP project** (all runtime resources), and **external actors/services** (users, 2FA, SMTP).
 
 - **Compute:** Cloud Run (`google_cloud_run_v2_service`), 1 vCPU / 512 MiB, `min=0` / `max=2`. Terminates HTTPS via a Google-managed cert; scales to zero when idle.
-- **Database:** Cloud SQL for MySQL 8.4, `db-f1-micro`, 10 GB SSD, **private IP only** — never publicly exposed, reached from Cloud Run over the VPC via **Direct VPC egress** (deliberately not a Serverless VPC connector, to avoid an always-on cost). This is the largest cost line; it can be stopped between sessions.
+- **Database:** Cloud SQL for MySQL **8.0** (`ENTERPRISE` edition — MySQL 8.4 requires Enterprise Plus, whose smallest tiers break the budget; see PRD 0002 outcome), `db-f1-micro`, 10 GB SSD, **private IP only** — never publicly exposed, reached from Cloud Run over the VPC via **Direct VPC egress** (deliberately not a Serverless VPC connector, to avoid an always-on cost). This is the largest cost line; it can be stopped between sessions.
 - **Storage:** two Cloud Storage buckets — one versioned bucket for Terraform remote state, one for encrypted document blobs (lifecycle rules expire old objects).
 - **Secrets:** Secret Manager holds DB creds, JWT key, AES key, SMTP creds (~6 secrets), injected into Cloud Run at start-up under its own service account. Secrets never live in source, the Docker image, or committed env files. Rotate by adding a new secret version — no code redeploy needed.
 - **Images:** Artifact Registry (Docker format, single regional repo). **Images are tagged by git commit SHA** so every revision traces to an exact commit.
