@@ -39,10 +39,21 @@ The private VPC path Cloud Run uses is unchanged — `private_network` stays wir
 - **Unblocks the open CI-migration question.** With the public IP live, a GitHub Actions runner can reach Cloud SQL via the proxy — wiring that into `ci.yml`/`cd.yml` is separate, not-yet-scoped work; this ADR only removes the network blocker.
 - Cloud SQL Studio and local MySQL (ADR 0004's access paths) remain fully valid and are the paths that continue to work after the flip-back — this ADR adds a temporary third path, it doesn't replace the other two.
 
+## Amendment (2026-07-09)
+
+The decision above is unchanged; this records how the toggle is actually operated, since the first attempt at "set to `true` only in untracked `terraform/terraform.tfvars`" did not hold in practice.
+
+- **The toggle's operative control is now the GitHub Actions variable `ENABLE_PUBLIC_IP`**, not local tfvars. Both `.github/workflows/ci.yml` and `.github/workflows/cd.yml` pass `TF_VAR_enable_public_ip: ${{ vars.ENABLE_PUBLIC_IP || 'false' }}` — CI's `terraform plan` and CD's `terraform apply` both read it, so plan and apply can never disagree about the toggle's state.
+- **A tfvars-only setting does not stick.** This was proven, not hypothesized: the instance was flipped to public via `terraform.tfvars` alone, and the next CD run — triggered by an unrelated, non-docs push to `main` — reverted it to the committed default (`false`) within the hour, because `cd.yml`'s `terraform apply` runs with only its Actions-variable `TF_VAR_*`s and has no visibility into an untracked local file. Local tfvars still matters for *local* `terraform apply` runs, but it is not the durable control surface.
+- **Unset variable = private.** The `|| 'false'` fallback means an unset `ENABLE_PUBLIC_IP` variable parses as `false`, so the pipeline's default behavior — with no variable configured at all — is to actively enforce private-only on every plan/apply, not merely to leave the instance as it was. This is a deliberate safety property: the burden of proof is on turning public access *on*, not on remembering to turn it off.
+- Operational steps updated accordingly in [runbooks/db-public-access.md](../runbooks/db-public-access.md).
+
 ## Related
 
 - [ADR 0004](0004-human-db-access-cloud-sql-studio.md) — the private-only decision this ADR temporarily overrides; see its Consequences section for what resumes once this ADR is reversed.
 - [PRD 0007](../action_plan/0007-temporary-public-db-access.md) — the plan of record this decision was executed under (scope, success criteria, verification).
 - [runbooks/db-public-access.md](../runbooks/db-public-access.md) — enable / flip-back operational steps, including the pre-presentation checklist.
 - [guides/developer-handover.md](../guides/developer-handover.md#database-access) — updated developer-facing instructions for the now-available proxy CLI flow.
+- [deployment/pipeline.md](../deployment/pipeline.md#github-actions-variables) — `ENABLE_PUBLIC_IP` in the full Actions-variable list.
 - `terraform/variables.tf:35`, `terraform/main.tf:37`, `terraform/modules/data/main.tf:22-32`, `terraform/modules/data/variables.tf:78-82` — the toggle in code.
+- `.github/workflows/ci.yml`, `.github/workflows/cd.yml` — where `TF_VAR_enable_public_ip` is wired from the `ENABLE_PUBLIC_IP` Actions variable.

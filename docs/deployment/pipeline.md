@@ -50,7 +50,7 @@ Stages, in order:
 
 ## GitHub Actions variables
 
-Four **variables** (never secrets — none of these are credentials) drive both workflows:
+Six **variables** (never secrets — none of these are credentials) drive both workflows:
 
 | Variable | Used by | Purpose |
 | --- | --- | --- |
@@ -58,8 +58,10 @@ Four **variables** (never secrets — none of these are credentials) drive both 
 | `WIF_PROVIDER` | CI, CD | Workload Identity Pool provider resource name for the `google-github-actions/auth` action |
 | `DEPLOYER_SA` | CI, CD | Deployer service account email to impersonate via WIF |
 | `BILLING_ACCOUNT_ID` | CD | Needed by `terraform apply` (the billing budget resource lives on the billing account, not the project) |
+| `DEVELOPER_GROUP` | CI (`plan`), CD (`apply`) | Google Group address granted developer IAM roles (`TF_VAR_developer_group`) — a group, never a personal email, since these logs are public. Empty until set. |
+| `ENABLE_PUBLIC_IP` | CI (`plan`), CD (`apply`) | Temporary dev-phase Cloud SQL public-IP toggle (`TF_VAR_enable_public_ip`, [ADR 0005](../decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md)). Wired as `${{ vars.ENABLE_PUBLIC_IP \|\| 'false' }}` so an unset variable safely parses as `false` (private). This is the durable control surface — a tfvars-only setting is reverted by the next CD apply; see [runbooks/db-public-access.md](../runbooks/db-public-access.md). |
 
-All four are non-sensitive identifiers, consistent with the keyless design in [ADR 0003](../decisions/0003-two-service-accounts-and-keyless-wif.md) — no repo secret exists for either service account.
+All six are non-sensitive identifiers, consistent with the keyless design in [ADR 0003](../decisions/0003-two-service-accounts-and-keyless-wif.md) — no repo secret exists for either service account.
 
 ## Quirks that cost us time
 
