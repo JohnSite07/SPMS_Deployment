@@ -60,7 +60,7 @@ mysql -h 127.0.0.1 -P 3306 -u <DB_USER> -p
 
 `<INSTANCE>` is the Cloud SQL instance name (Terraform default: `spms-mysql`, see [terraform/modules/data/variables.tf](../../terraform/modules/data/variables.tf)). `<DB_USER>` is the app login username, itself fetchable via `gcloud secrets versions access latest --secret=db-user`. The schema name is `securevault` by default (same file).
 
-The proxy authenticates using your own `gcloud` identity against IAM (`roles/cloudsql.client`, granted per-developer — see [terraform/modules/iam/main.tf](../../terraform/modules/iam/main.tf) `developer_project_roles`). If the proxy or the `mysql` client refuses to connect, confirm your Google account is in the project's `developer_emails` Terraform variable — ask DevOps to add it if not.
+The proxy authenticates using your own `gcloud` identity against IAM (`roles/cloudsql.client` **plus** `roles/serviceusage.serviceUsageConsumer` — human callers need the latter to use the SQL Admin API under their own credentials, or the proxy fails with a 403 "Caller does not have required permission to use project"; see [terraform/modules/iam/main.tf](../../terraform/modules/iam/main.tf) `developer_project_roles`). If the proxy or the `mysql` client refuses to connect, confirm your Google account is a member of the developers Google Group — ask DevOps to add you if not. Freshly granted IAM takes a few minutes to propagate.
 
 ## All credentials
 
