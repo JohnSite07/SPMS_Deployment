@@ -30,6 +30,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0001 — Cloud platform, compute, IaC, and CI/CD](decisions/0001-platform-and-tooling.md)
 - [0002 — Terraform state bootstrap and partial backend configuration](decisions/0002-terraform-state-bootstrap-and-partial-backend.md)
 - [0003 — Two service accounts and keyless Workload Identity Federation](decisions/0003-two-service-accounts-and-keyless-wif.md)
+- [0004 — Human database access: Cloud SQL Studio, not a network path](decisions/0004-human-db-access-cloud-sql-studio.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment

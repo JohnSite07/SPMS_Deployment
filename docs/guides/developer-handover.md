@@ -19,7 +19,7 @@ npm run lint
 npm run dev
 ```
 
-`npm run dev` runs the app locally on `PORT` (default `8080` if unset — Cloud Run sets it in production, you don't need to). The local run has no database connection configured out of the box; see [Database access](#database-access) to point it at Cloud SQL through the proxy.
+`npm run dev` runs the app locally on `PORT` (default `8080` if unset — Cloud Run sets it in production, you don't need to). The local run has no database connection configured out of the box; see [Database access](#database-access) — day-to-day local dev points at a local MySQL, not the cloud instance.
 
 ## Ownership split
 
@@ -41,37 +41,37 @@ npm run dev
 
 ## Database access
 
-**The database has no public IP — by design, not an oversight.** Cloud SQL for MySQL is reachable only over the VPC (Cloud Run reaches it via Direct VPC egress; see [architecture/overview.md](../architecture/overview.md)). The supported way for a human to reach it is the **Cloud SQL Auth Proxy**, which tunnels an authenticated, encrypted connection without ever exposing the instance publicly.
+**The database has no public IP — by design, not an oversight.** Cloud SQL for MySQL is reachable only over the VPC (Cloud Run reaches it via Direct VPC egress; see [architecture/overview.md](../architecture/overview.md)).
+
+> **The Cloud SQL Auth Proxy does not work against this instance — don't try it.** A developer dry run confirmed the proxy authenticates a connection, it doesn't create network reachability: it dials the instance's public IP (which doesn't exist here) or, with `--private-ip`, a VPC-internal address your laptop can't route to. The live failure is `instance does not have IP of type "PUBLIC"`. See [ADR 0004](../decisions/0004-human-db-access-cloud-sql-studio.md) for the full reasoning and the two access paths that replace it, below.
+
+### Cloud data inspection — Cloud SQL Studio
+
+For inspecting the real cloud database (production/shared data, not your local dev copy), use **Cloud SQL Studio** in the console — it reaches private instances without your machine needing to route to the VPC:
+
+1. Console → **SQL** → instance `spms-mysql` → **Cloud SQL Studio**.
+2. Database `securevault`, user `spms_app`.
+3. Password: `gcloud secrets versions access latest --secret=db-password`, run under your own identity.
+
+This requires membership in the developers Google Group (`roles/cloudsql.studioUser`, granted alongside your other developer roles — ask DevOps to add you if Studio refuses access; freshly granted IAM takes a few minutes to propagate). This is also how `TC-SEC-*` ciphertext-at-rest inspection is done — see [Test-plan support](#test-plan-support) below.
+
+### Local development
+
+Day-to-day development runs against a **local MySQL**, not the cloud instance — the instance stays private-only and Studio is a console tool, not a wire connection your app or a local `mysql` client can open. Run MySQL locally, matching the cloud instance's major version (`8.0`, not `8.4` — see [Open decisions they own](#open-decisions-they-own)):
 
 ```bash
-# 1. One-time: create Application Default Credentials (ADC) as yourself.
-#    `gcloud auth login` is NOT enough — the proxy (and any locally-run app
-#    code using Google client libraries) reads ADC, not the gcloud CLI login.
-#    Without ADC the proxy falls back to the GCE metadata server, which does
-#    not exist on your laptop, and dies with
-#    "credentials: invalid token JSON from metadata: EOF".
-gcloud auth application-default login
-gcloud auth application-default set-quota-project <PROJECT_ID>
-
-# 2. Look up the instance connection name (project:region:instance)
-gcloud sql instances describe <INSTANCE> --format="value(connectionName)"
-# → <INSTANCE_CONNECTION_NAME>
-
-# 3. Start the proxy (download from https://cloud.google.com/sql/docs/mysql/sql-proxy if you don't have it)
-cloud-sql-proxy <INSTANCE_CONNECTION_NAME> --port 3306
-#    (alternative if you'd rather not create ADC: add --gcloud-auth to make
-#     the proxy borrow the gcloud CLI's active login instead)
-
-# 4. In another terminal, fetch the app DB password under your own identity
-gcloud secrets versions access latest --secret=db-password
-
-# 5. Connect
-mysql -h 127.0.0.1 -P 3306 -u <DB_USER> -p
+docker run --name spms-mysql-local \
+  -e MYSQL_ROOT_PASSWORD=devroot \
+  -e MYSQL_DATABASE=securevault \
+  -p 3306:3306 \
+  -d mysql:8.0
 ```
 
-`<INSTANCE>` is the Cloud SQL instance name (Terraform default: `spms-mysql`, see [terraform/modules/data/variables.tf](../../terraform/modules/data/variables.tf)). `<DB_USER>` is the app login username, itself fetchable via `gcloud secrets versions access latest --secret=db-user`. The schema name is `securevault` by default (same file).
+Point the app's local env (`DB_HOST=127.0.0.1`, etc. — see [Env contract](#env-contract)) at this container, and apply the team's own DDL to it. The deployed app on Cloud Run is unaffected by any of this — it still reaches the real instance over the VPC via Direct VPC egress, and the env-var contract is unchanged either way.
 
-The proxy authenticates using your own `gcloud` identity against IAM (`roles/cloudsql.client` **plus** `roles/serviceusage.serviceUsageConsumer` — human callers need the latter to use the SQL Admin API under their own credentials, or the proxy fails with a 403 "Caller does not have required permission to use project"; see [terraform/modules/iam/main.tf](../../terraform/modules/iam/main.tf) `developer_project_roles`). If the proxy or the `mysql` client refuses to connect, confirm your Google account is a member of the developers Google Group — ask DevOps to add you if not. Freshly granted IAM takes a few minutes to propagate.
+### Secrets and gcloud access (still applies)
+
+Fetching secrets (`db-password`, etc.) and using the SQL Admin API under your own identity both still require `gcloud auth login` plus `roles/serviceusage.serviceUsageConsumer` (human callers need this to use Google APIs under their own credentials — see [terraform/modules/iam/main.tf](../../terraform/modules/iam/main.tf) `developer_project_roles`). If you use a Google client library locally (not just the `gcloud` CLI) — for example, fetching a secret directly from app code rather than shelling out — it reads Application Default Credentials, not your `gcloud` CLI login, so also run `gcloud auth application-default login` once. If any of this refuses to authorize, confirm your Google account is a member of the developers Google Group.
 
 ## All credentials
 
@@ -129,7 +129,7 @@ Secret-backed env vars resolve to their `latest` version **at container instance
 For Part IV test execution (the M4 System Test Plan, Developer/QA-owned — see [architecture/system-design-summary.md](../architecture/system-design-summary.md#part-iv--system-test-plan-developer-team)):
 
 - **HTTPS endpoint**: `<SERVICE_URL>` is live for the full testing window; DevOps keeps it available.
-- **`TC-SEC-*` DB inspection**: connect via the Cloud SQL Auth Proxy exactly as in [Database access](#database-access) above — no separate access path exists or is needed.
+- **`TC-SEC-*` DB inspection**: use Cloud SQL Studio exactly as in [Database access](#database-access) above — no separate access path exists or is needed.
 - **Cold-start-free demos**: Cloud Run scales to zero by default (`min_instance_count = 0`), which means the first request after idle time pays a cold-start latency. For a demo window where that's undesirable, DevOps can temporarily set the `demo_min_instances` Terraform variable to `1` (see [terraform/modules/app/variables.tf](../../terraform/modules/app/variables.tf)) — ask ahead of time; it is a deliberate, temporary override, never the default, because it keeps an instance billing continuously.
 
 ## Open decisions they own
@@ -157,4 +157,5 @@ This project runs inside a fixed $300 free-trial credit over a fixed window. A f
 - [architecture/domain-model.md](../architecture/domain-model.md) — the 14-class object model your code implements.
 - [requirements/functional-requirements.md](../requirements/functional-requirements.md) · [requirements/non-functional-requirements.md](../requirements/non-functional-requirements.md) — the application spec.
 - [decisions/0003-two-service-accounts-and-keyless-wif.md](../decisions/0003-two-service-accounts-and-keyless-wif.md) — why access is split the way it is.
+- [decisions/0004-human-db-access-cloud-sql-studio.md](../decisions/0004-human-db-access-cloud-sql-studio.md) — why human DB access is Cloud SQL Studio + local MySQL, not the Auth Proxy.
 - [deployment/pipeline.md](../deployment/pipeline.md) · [runbooks/](../runbooks/) — everything referenced above, in full.

@@ -36,7 +36,7 @@ The M4 System Design document has four parts. This repo (`SPMS_Deployment`) and 
 - **Tooling**: Bugzilla (defect tracking), Postman (API testing), Chrome DevTools (network/TLS/timing), MySQL Workbench (DB inspection), GitHub (test-artifact version control).
 - **Environment**: Chrome desktop only (non-Chrome browsers explicitly out of scope this cycle); Node.js 20+, MySQL 8+.
 - Known blockers called out in the plan itself: `TC-AUTH-09`/`TC-AUTH-10` (2FA) pending the TOTP sprint; `TC-DOC-*` (Secure Documents) pending UC-04 implementation.
-- This is executed entirely by the Developer/QA side; DevOps involvement is limited to keeping the deployed environment (HTTPS endpoint, Cloud SQL access for `TC-SEC-*` DB inspection) available during the window.
+- This is executed entirely by the Developer/QA side; DevOps involvement is limited to keeping the deployed environment (HTTPS endpoint, Cloud SQL Studio access for `TC-SEC-*` DB inspection — see [ADR 0004](../decisions/0004-human-db-access-cloud-sql-studio.md)) available during the window.
 
 ## Open cross-team items / known inconsistencies
 

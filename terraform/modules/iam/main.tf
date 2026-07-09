@@ -154,11 +154,14 @@ locals {
     "roles/artifactregistry.reader",
     "roles/run.viewer",
     "roles/logging.viewer",
-    # Human callers using the Cloud SQL Auth Proxy (or client libraries) with
-    # their own credentials need serviceusage.services.use on this project —
-    # cloudsql.client alone 403s at the SQL Admin API (found live in the
-    # developer dry run; SAs don't hit this path).
+    # Human callers using Google APIs with their own credentials need
+    # serviceusage.services.use on this project (found live in the developer
+    # dry run; SAs don't hit this path).
     "roles/serviceusage.serviceUsageConsumer",
+    # Human DB access is Cloud SQL Studio in the console — the Auth Proxy
+    # cannot reach a private-IP-only instance from outside the VPC, and the
+    # instance stays private by design (see ADR 0004).
+    "roles/cloudsql.studioUser",
   ]
 
   developer_role_grants = {
