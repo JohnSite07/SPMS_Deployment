@@ -44,17 +44,28 @@ npm run dev
 **The database has no public IP — by design, not an oversight.** Cloud SQL for MySQL is reachable only over the VPC (Cloud Run reaches it via Direct VPC egress; see [architecture/overview.md](../architecture/overview.md)). The supported way for a human to reach it is the **Cloud SQL Auth Proxy**, which tunnels an authenticated, encrypted connection without ever exposing the instance publicly.
 
 ```bash
-# 1. Look up the instance connection name (project:region:instance)
+# 1. One-time: create Application Default Credentials (ADC) as yourself.
+#    `gcloud auth login` is NOT enough — the proxy (and any locally-run app
+#    code using Google client libraries) reads ADC, not the gcloud CLI login.
+#    Without ADC the proxy falls back to the GCE metadata server, which does
+#    not exist on your laptop, and dies with
+#    "credentials: invalid token JSON from metadata: EOF".
+gcloud auth application-default login
+gcloud auth application-default set-quota-project <PROJECT_ID>
+
+# 2. Look up the instance connection name (project:region:instance)
 gcloud sql instances describe <INSTANCE> --format="value(connectionName)"
 # → <INSTANCE_CONNECTION_NAME>
 
-# 2. Start the proxy (download from https://cloud.google.com/sql/docs/mysql/sql-proxy if you don't have it)
+# 3. Start the proxy (download from https://cloud.google.com/sql/docs/mysql/sql-proxy if you don't have it)
 cloud-sql-proxy <INSTANCE_CONNECTION_NAME> --port 3306
+#    (alternative if you'd rather not create ADC: add --gcloud-auth to make
+#     the proxy borrow the gcloud CLI's active login instead)
 
-# 3. In another terminal, fetch the app DB password under your own identity
+# 4. In another terminal, fetch the app DB password under your own identity
 gcloud secrets versions access latest --secret=db-password
 
-# 4. Connect
+# 5. Connect
 mysql -h 127.0.0.1 -P 3306 -u <DB_USER> -p
 ```
 
