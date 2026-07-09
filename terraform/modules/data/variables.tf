@@ -74,3 +74,9 @@ variable "document_retention_days" {
   type        = number
   default     = 365
 }
+
+variable "enable_public_ip" {
+  description = "Whether the Cloud SQL instance also gets a public IPv4 address, alongside the private IP (private_network stays wired unconditionally; Cloud Run keeps using the private path either way). Default false — private-only is the code default and the presentation-time end state. Deliberately paired with zero authorized_networks: a public IP with no authorized networks refuses direct mysql -h <ip> connections and only allows IAM-authenticated Cloud SQL Auth Proxy access. Do not add an authorized_networks block or change ssl_mode/require_ssl alongside this — that would either defeat the gate or impose an unplanned SSL requirement on the app's private-path connection."
+  type        = bool
+  default     = false
+}

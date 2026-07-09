@@ -13,6 +13,7 @@ A PRD must be **Approved** by the user before execution starts. Once executed, i
 | [0003](0003-iam-and-wif.md) | Identity: Service Accounts & Workload Identity Federation | Done |
 | [0004](0004-app-runtime.md) | Application Runtime: Artifact Registry, Secrets, Cloud Run | Done |
 | [0005](0005-cicd-pipeline.md) | CI/CD Pipeline & App Skeleton | Done |
-| [0006](0006-developer-handover.md) | Developer Team Handover Package | In Progress (blocked on dev emails) |
+| [0006](0006-developer-handover.md) | Developer Team Handover Package | In Progress (dry run underway) |
+| [0007](0007-temporary-public-db-access.md) | Temporary Public DB Access (dev phase, reversible) | Done (flip back before presentation) |
 
 Execution order: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 (0002 and 0003 are independent of each other; the rest are sequential). Each PRD is executed only after user approval, and each ends with an infra-reviewer pass and its documentation deliverables.

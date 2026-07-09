@@ -1,5 +1,6 @@
-# data module — single purpose: Cloud SQL (MySQL, db-f1-micro, private IP
-# only) plus the app schema and app login, and the document blob bucket.
+# data module — single purpose: Cloud SQL (MySQL, db-f1-micro, private IP by
+# default; a public IP is a reversible dev-phase toggle, see enable_public_ip)
+# plus the app schema and app login, and the document blob bucket.
 # Requires the network module's PSA connection to already exist (wired via
 # depends_on in the root module block).
 
@@ -18,8 +19,15 @@ resource "google_sql_database_instance" "mysql" {
     disk_autoresize   = false # cost guardrail: 10 GB is a hard cap, not a starting point
     availability_type = "ZONAL"
 
+    # Public IP is a reversible dev-phase toggle (var.enable_public_ip,
+    # default false). No authorized_networks block is declared, by design:
+    # with a public IP and zero authorized networks, direct `mysql -h <ip>`
+    # is refused and only IAM-authenticated Cloud SQL Auth Proxy connections
+    # work. Do not add authorized_networks — that would break this gate.
+    # ssl_mode is deliberately left at its default for the same reason (see
+    # variable description) — do not set/change it here.
     ip_configuration {
-      ipv4_enabled    = false
+      ipv4_enabled    = var.enable_public_ip
       private_network = var.network_id
     }
 

@@ -31,3 +31,9 @@ variable "developer_group" {
   type        = string
   default     = ""
 }
+
+variable "enable_public_ip" {
+  description = "Whether Cloud SQL also gets a public IPv4 address (dev-phase, proxy-only access via zero authorized_networks) alongside the private IP. Default false — private-only is the code default and the presentation-time end state; toggle via tfvars, not a code change."
+  type        = bool
+  default     = false
+}

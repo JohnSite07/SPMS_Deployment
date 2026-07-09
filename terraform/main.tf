@@ -31,6 +31,11 @@ module "data" {
   db_user_name = module.secrets.db_user_name
   db_password  = module.secrets.db_password
 
+  # Reversible dev-phase toggle; default false (private-only). See the
+  # variable description in modules/data for the security model this pairs
+  # with (zero authorized_networks — do not add one).
+  enable_public_ip = var.enable_public_ip
+
   # Cloud SQL private-IP creation requires the network module's Private
   # Services Access connection to exist first.
   depends_on = [module.network]
