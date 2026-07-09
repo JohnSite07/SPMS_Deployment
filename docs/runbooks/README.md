@@ -8,3 +8,4 @@ Available now:
 - [Cost check](cost-check.md) against the $300 budget.
 - [Roll back a Cloud Run revision](rollback.md) — manual traffic re-pointing, and re-running a failed CD run.
 - [Rotate a secret](secret-rotation.md) — add a Secret Manager version and get running instances to pick it up.
+- [Enable / flip back Cloud SQL public IP](db-public-access.md) — the temporary dev-phase toggle from [ADR 0005](../decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md); flipping back to private is a required pre-presentation step.

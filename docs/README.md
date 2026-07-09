@@ -31,6 +31,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0002 — Terraform state bootstrap and partial backend configuration](decisions/0002-terraform-state-bootstrap-and-partial-backend.md)
 - [0003 — Two service accounts and keyless Workload Identity Federation](decisions/0003-two-service-accounts-and-keyless-wif.md)
 - [0004 — Human database access: Cloud SQL Studio, not a network path](decisions/0004-human-db-access-cloud-sql-studio.md)
+- [0005 — Temporary public IP on Cloud SQL for the development phase](decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment
@@ -43,6 +44,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [Cost check](runbooks/cost-check.md) — daily/weekly spend sanity check against the $300 budget.
 - [Roll back a Cloud Run revision](runbooks/rollback.md) — manual traffic re-pointing and re-running a failed CD run.
 - [Rotate a secret](runbooks/secret-rotation.md) — add a Secret Manager version and get running instances to pick it up.
+- [Enable / flip back Cloud SQL public IP](runbooks/db-public-access.md) — the dev-phase toggle from [ADR 0005](decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md); the flip-back is a required pre-presentation step.
 
 ### Guides
 - [Developer handover](guides/developer-handover.md) — placeholder-valued onboarding guide for the Developer team: quick start, endpoints, DB access, credentials, env contract, ship process, open decisions, cost etiquette.

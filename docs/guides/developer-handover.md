@@ -41,9 +41,32 @@ npm run dev
 
 ## Database access
 
-**The database has no public IP — by design, not an oversight.** Cloud SQL for MySQL is reachable only over the VPC (Cloud Run reaches it via Direct VPC egress; see [architecture/overview.md](../architecture/overview.md)).
+**The database is private-IP-only by design — the presentation-time end state.** Cloud SQL for MySQL is normally reachable only over the VPC (Cloud Run reaches it via Direct VPC egress; see [architecture/overview.md](../architecture/overview.md)).
 
-> **The Cloud SQL Auth Proxy does not work against this instance — don't try it.** A developer dry run confirmed the proxy authenticates a connection, it doesn't create network reachability: it dials the instance's public IP (which doesn't exist here) or, with `--private-ip`, a VPC-internal address your laptop can't route to. The live failure is `instance does not have IP of type "PUBLIC"`. See [ADR 0004](../decisions/0004-human-db-access-cloud-sql-studio.md) for the full reasoning and the two access paths that replace it, below.
+> **Historical note:** a developer dry run originally confirmed the Cloud SQL Auth Proxy does not work against a private-only instance — it authenticates a connection, it doesn't create network reachability, and against a private-only instance the live failure was `instance does not have IP of type "PUBLIC"`. See [ADR 0004](../decisions/0004-human-db-access-cloud-sql-studio.md) for the full reasoning and the two permanent access paths that follow from it: Cloud SQL Studio and local MySQL, below.
+
+> **Temporary, development-phase-only change:** [ADR 0005](../decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md) adds a public IP to the instance for the duration of the development phase, gated by empty `authorized_networks` so it stays IAM-proxy-only (a direct `mysql -h <ip>` is still refused). This makes the **Auth Proxy CLI flow work now** — see [Temporary — Auth Proxy CLI](#temporary--auth-proxy-cli-development-phase-only) below. **It will be removed before the graded presentation** (flip-back runbook: [runbooks/db-public-access.md](../runbooks/db-public-access.md)) — do not build anything that assumes this stays available. Cloud SQL Studio and local MySQL remain the permanent paths and are what's live during the presentation window.
+
+### Temporary — Auth Proxy CLI (development phase only)
+
+**Available only while [ADR 0005](../decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md) is in effect.** This is the fast path for CLI/AI-assisted work against the live schema (running `mysql` directly, AI tools such as Claude Code, ad hoc queries) — use it for development convenience, not as something to depend on long-term.
+
+```bash
+# one-time per machine: Application Default Credentials the proxy authenticates with
+gcloud auth application-default login
+
+# start the proxy (leave running in its own terminal)
+cloud-sql-proxy <INSTANCE_CONNECTION_NAME> --port 3306
+
+# in another terminal, connect through the local proxy port
+mysql -h 127.0.0.1 -P 3306 -u spms_app -p securevault
+```
+
+- `<INSTANCE_CONNECTION_NAME>` is the `project:region:instance` string from `terraform/modules/data/outputs.tf`'s `instance_connection_name` output (not currently surfaced as a root-level output — see `terraform/outputs.tf`). It's not a secret, but it embeds the real project ID, so it isn't printed here — get it from your filled handover copy (see the note at the top of this doc) or ask DevOps.
+- The `mysql` password is `db-password` from Secret Manager (`gcloud secrets versions access latest --secret=db-password`), same as the [Cloud SQL Studio](#cloud-data-inspection--cloud-sql-studio) flow below.
+- This works because you're already in the developers Google Group (`roles/cloudsql.client` + `roles/serviceusage.serviceUsageConsumer`, from [PRD 0006](../action_plan/0006-developer-handover.md)) — no new IAM grant is needed.
+- Direct `mysql -h <public-ip>` (skipping the proxy) is refused — there is no `authorized_networks` entry, by design (see [ADR 0005](../decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md)). The proxy is the only supported path even while the public IP exists.
+- When [runbooks/db-public-access.md](../runbooks/db-public-access.md)'s flip-back has run (before the presentation), this stops working — fall back to Cloud SQL Studio or local MySQL below.
 
 ### Cloud data inspection — Cloud SQL Studio
 
@@ -157,5 +180,7 @@ This project runs inside a fixed $300 free-trial credit over a fixed window. A f
 - [architecture/domain-model.md](../architecture/domain-model.md) — the 14-class object model your code implements.
 - [requirements/functional-requirements.md](../requirements/functional-requirements.md) · [requirements/non-functional-requirements.md](../requirements/non-functional-requirements.md) — the application spec.
 - [decisions/0003-two-service-accounts-and-keyless-wif.md](../decisions/0003-two-service-accounts-and-keyless-wif.md) — why access is split the way it is.
-- [decisions/0004-human-db-access-cloud-sql-studio.md](../decisions/0004-human-db-access-cloud-sql-studio.md) — why human DB access is Cloud SQL Studio + local MySQL, not the Auth Proxy.
+- [decisions/0004-human-db-access-cloud-sql-studio.md](../decisions/0004-human-db-access-cloud-sql-studio.md) — why human DB access is Cloud SQL Studio + local MySQL, not the Auth Proxy (the presentation-time end state).
+- [decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md](../decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md) — the temporary dev-phase override that makes the Auth Proxy CLI flow work.
+- [runbooks/db-public-access.md](../runbooks/db-public-access.md) — enable / flip-back steps for the temporary public IP.
 - [deployment/pipeline.md](../deployment/pipeline.md) · [runbooks/](../runbooks/) — everything referenced above, in full.

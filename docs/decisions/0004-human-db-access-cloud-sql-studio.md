@@ -35,9 +35,12 @@ This is a structural mismatch, not a misconfiguration: no amount of ADC/IAM setu
 - The Auth Proxy instructions and the `--private-ip` variant are no longer part of any supported workflow for this instance; the historical proxy-based plan in [PRD 0006](../action_plan/0006-developer-handover.md) reflects the pre-dry-run intent and is left as-is (an executed PRD's record of what was planned and found), superseded in practice by this ADR.
 - If a future need requires scripted/automated access to the live instance from outside the VPC (not just human console inspection), it will need its own decision — the options above (public IP, bastion/VPN) remain available to reconsider then, with their trade-offs unchanged.
 
+> **Update — 2026-07-09:** exactly that need materialized (CLI/AI-assisted dev work and CI-run migrations). [ADR 0005](0005-temporary-public-ip-cloud-sql-dev-phase.md) temporarily overrides the private-only decision above for the development phase, via a reversible toggle, gated by empty authorized networks so it stays IAM-proxy-only. This ADR is not superseded — it is the state ADR 0005 reverses back to before the graded presentation.
+
 ## Related
 
 - [architecture/overview.md](../architecture/overview.md) — private-IP-only DB, Direct VPC egress.
 - [guides/developer-handover.md](../guides/developer-handover.md#database-access) — the operational how-to this decision drives.
 - [terraform/modules/iam/main.tf](../../terraform/modules/iam/main.tf) — `roles/cloudsql.studioUser` grant, forward-referencing this ADR.
 - [action_plan/0006-developer-handover.md](../action_plan/0006-developer-handover.md) — the original (pre-dry-run) handover PRD this ADR supersedes in practice.
+- [ADR 0005](0005-temporary-public-ip-cloud-sql-dev-phase.md) — the temporary, reversible dev-phase override of this decision.
