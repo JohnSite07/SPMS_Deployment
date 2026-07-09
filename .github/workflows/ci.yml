@@ -90,3 +90,6 @@ jobs:
           # granted to the group, never to personal emails, because these
           # logs are public. Empty until the DEVELOPER_GROUP variable is set.
           TF_VAR_developer_group: ${{ vars.DEVELOPER_GROUP }}
+          # Keep the plan consistent with CD's apply (temporary dev-phase
+          # public IP, ADR 0005). `|| 'false'` guards the bool parse.
+          TF_VAR_enable_public_ip: ${{ vars.ENABLE_PUBLIC_IP || 'false' }}

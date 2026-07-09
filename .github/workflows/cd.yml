@@ -82,6 +82,13 @@ jobs:
           # granted to the group, never to personal emails, because these
           # logs are public. Empty until the DEVELOPER_GROUP variable is set.
           TF_VAR_developer_group: ${{ vars.DEVELOPER_GROUP }}
+          # Temporary dev-phase public IP on Cloud SQL (proxy-only; see ADR
+          # 0005). Must be passed here or every CD apply reverts it to the
+          # committed default (false) — which is the safe presentation state.
+          # Flip back = set the ENABLE_PUBLIC_IP variable to false. The
+          # `|| 'false'` fallback keeps this a valid bool if the var is unset
+          # (empty string would fail terraform's bool parse).
+          TF_VAR_enable_public_ip: ${{ vars.ENABLE_PUBLIC_IP || 'false' }}
 
       # Deploy the new revision with zero traffic. The Cloud Run resource's
       # `lifecycle.ignore_changes` on image (see terraform/modules/app) means
