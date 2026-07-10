@@ -1,0 +1,22 @@
+# Docker build context is the repo root (cd.yml `context: .`). Keep it lean:
+# ship only app/ and client/ source — everything installed or generated is
+# rebuilt inside the image, and nothing else belongs in an application image.
+**/node_modules
+**/dist
+**/coverage
+**/*.log
+
+# Not part of the runtime image.
+.git
+.github
+docs
+terraform
+*.md
+
+# Tests and lint config aren't needed to run the service or build the SPA.
+app/tests
+app/eslint.config.js
+client/eslint.config.js
+
+# Never bake secrets or local env into an image.
+.env*

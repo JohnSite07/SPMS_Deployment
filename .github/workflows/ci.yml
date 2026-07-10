@@ -37,6 +37,34 @@ jobs:
         working-directory: app
         run: npm test
 
+  client-checks:
+    name: Client checks (lint + build)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Lint
+        working-directory: client
+        run: npm run lint
+
+      - name: Build
+        working-directory: client
+        run: npm run build
+
   terraform-checks:
     name: Terraform checks (fmt/validate/plan)
     runs-on: ubuntu-latest

@@ -240,8 +240,12 @@ describe('sliding session headers', () => {
 });
 
 describe('public routes', () => {
-  it.each(['/health', '/'])('serves %s without a token', async (path) => {
-    const res = await request(app()).get(path);
+  // `/` is no longer a backend route: when a client build is present it is
+  // served by the SPA static handler ahead of auth (see spa-serving.test.js);
+  // when it is absent (as here) there is simply nothing at `/`. `/health`
+  // stays a public backend route because the CD smoke test depends on it.
+  it('serves /health without a token', async () => {
+    const res = await request(app()).get('/health');
     expect(res.status).toBe(200);
   });
 });

@@ -6,9 +6,11 @@ const { createTokenService } = require('../services/token-service');
 // fails open, and the failure is invisible until someone notices the route
 // never asked for a token.
 //
-// `/` is the deployment skeleton's placeholder page and `/health` is the CD
-// smoke test's target, which must answer during a cold start with no
-// credentials (see deployment/pipeline.md).
+// `/health` is the CD smoke test's target, which must answer during a cold
+// start with no credentials (see deployment/pipeline.md). It and the SPA
+// shell (`/` and client-side routes) are served ahead of this middleware in
+// app.js, so they never actually reach here — the `/health` entry is kept as
+// defence-in-depth in case that ordering ever changes.
 //
 // An entry is either a bare path — public for every method — or a
 // `"METHOD /path"` pair. Login needs the pair form: `POST /api/session` opens
@@ -16,7 +18,7 @@ const { createTokenService } = require('../services/token-service');
 // session and must prove it owns the session it is ending. Listing the bare
 // path would have made logout unauthenticated, letting anyone end anyone's
 // session by guessing nothing at all.
-const PUBLIC_PATHS = Object.freeze(['/', '/health', 'POST /api/session']);
+const PUBLIC_PATHS = Object.freeze(['/health', 'POST /api/session']);
 
 const METHOD_SCOPED_ENTRY = /^([A-Z]+)\s+(\/.*)$/;
 

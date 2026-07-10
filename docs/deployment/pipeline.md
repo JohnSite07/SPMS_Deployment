@@ -6,14 +6,15 @@ Related: [gcp-setup.md](gcp-setup.md) · [ADR 0003 — two service accounts and 
 
 ## CI — `ci.yml`, on pull request
 
-Two independent jobs, both required status checks on `main`:
+Three independent jobs. `App checks` and `Terraform checks` are required status checks on `main`; `Client checks` is a newer job that runs on every PR but is **not yet added** to the required-checks list — see [Branch protection](#branch-protection) below.
 
 | Job (display name) | GCP access | Steps |
 | --- | --- | --- |
 | `App checks (lint + test)` | None | checkout → `npm ci` → `npm run lint` → `npm test`, all in `app/` |
+| `Client checks (lint + build)` | None | checkout → `npm ci` → `npm run lint` → `npm run build`, all in `client/` — see [ADR 0009](../decisions/0009-frontend-stack-and-serving-model.md) and [PRD 0011](../action_plan/0011-frontend-serving-and-cd-integration.md) |
 | `Terraform checks (fmt/validate/plan)` | WIF, read-only intent | checkout → `terraform fmt -check -recursive` → authenticate (WIF) → `terraform init` → `terraform validate` → `terraform plan` |
 
-The app job never touches GCP — it can run for any contributor, including forks, with no credentials at all.
+The app and client jobs never touch GCP — they can run for any contributor, including forks, with no credentials at all.
 
 The Terraform job only ever runs `plan`, never `apply`. Its WIF authentication and the `plan` step itself are both gated by:
 
@@ -32,7 +33,7 @@ Single job, `deploy`, gated by `concurrency: { group: production, cancel-in-prog
 Stages, in order:
 
 1. **Authenticate (WIF)** — exchange the run's OIDC token to impersonate the deployer SA. This is the only workflow that authenticates to GCP with write intent.
-2. **Build and push** — `docker buildx` builds the image from `app/` and pushes it to Artifact Registry tagged `${{ github.sha }}` only. No `:latest` tag is ever pushed, so every running revision traces back to an exact commit.
+2. **Build and push** — `docker buildx` builds the image and pushes it to Artifact Registry tagged `${{ github.sha }}` only. No `:latest` tag is ever pushed, so every running revision traces back to an exact commit. The Dockerfile ([app/Dockerfile](../../app/Dockerfile)) is multi-stage: a `client-build` stage runs `npm ci && npm run build` in `client/`, whose `dist/` is copied into the runtime image alongside the Express app. Because the build now needs to see both `app/` and `client/`, the build context is the **repo root** (`context: .`, `file: app/Dockerfile`), not `app/` as before — see [ADR 0009](../decisions/0009-frontend-stack-and-serving-model.md) and [PRD 0011](../action_plan/0011-frontend-serving-and-cd-integration.md).
 3. **`terraform apply -auto-approve`** — reconciles the whole estate (not just the app). The Cloud Run resource's `lifecycle.ignore_changes` on `template[0].containers[0].image` (see [terraform/modules/app/main.tf](../../terraform/modules/app/main.tf)) means this step never fights the SHA-tagged deploy in step 4.
 4. **Deploy candidate, no traffic** — `gcloud run deploy spms --image <sha> --no-traffic --tag candidate`. The new revision exists and is reachable at its own tagged URL, but serves 0% of production traffic.
 5. **Resolve the candidate URL** from `gcloud run services describe --format=json`, filtering `status.traffic[]` for `tag == candidate`.
@@ -44,7 +45,9 @@ Stages, in order:
 
 ## Branch protection
 
-`main` requires both CI jobs to pass before merge. The required-check **contexts are the jobs' display names** — `App checks (lint + test)` and `Terraform checks (fmt/validate/plan)` — not their YAML job IDs (`app-checks`, `terraform-checks`). See [Quirks](#quirks-that-cost-us-time).
+`main` requires CI jobs to pass before merge. The required-check **contexts are the jobs' display names** — `App checks (lint + test)` and `Terraform checks (fmt/validate/plan)` — not their YAML job IDs (`app-checks`, `terraform-checks`). See [Quirks](#quirks-that-cost-us-time).
+
+> **Follow-up (not yet applied):** [PRD 0011](../action_plan/0011-frontend-serving-and-cd-integration.md) added a third `ci.yml` job, `Client checks (lint + build)` (job id `client-checks`), gating the `client/` build the same way `App checks` gates `app/`. It runs on every PR today but has **not** been added to `main`'s required-status-checks list, so a PR can currently merge with a broken client build. Add `Client checks (lint + build)` (the display name, per the quirk above) to the required checks to close this gap.
 
 `enforce_admins` is currently **`false`** — a deliberate, documented bootstrap carve-out for a single-operator academic project, not an oversight. It should be revisited (set `true`) once more than one person can push directly, and is called out again in [ADR 0003](../decisions/0003-two-service-accounts-and-keyless-wif.md#consequences).
 

@@ -36,6 +36,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0006 — Enforcing the append-only audit log in application code](decisions/0006-append-only-audit-log-enforcement.md)
 - [0007 — Stateful session revocation for logout](decisions/0007-stateful-session-revocation.md)
 - [0008 — An in-app `admin` role for the audit-history view](decisions/0008-in-app-admin-role.md)
+- [0009 — Frontend stack and serving model: React/Vite served by Cloud Run, not a CDN bucket](decisions/0009-frontend-stack-and-serving-model.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment
