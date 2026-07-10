@@ -1,0 +1,190 @@
+const crypto = require('crypto');
+
+// One in-memory database behind every port, because that is how the real one
+// is shaped: a single MySQL instance whose transactions span the credential
+// tables and the audit table. Ports that each owned a private store could
+// never roll a credential back when its audit entry failed, and the atomicity
+// the routes claim would go untested.
+//
+// transaction() really does roll back — it snapshots and restores — so a test
+// that makes the audit append fail can assert the credential is still absent.
+
+function snapshot(state) {
+  return {
+    credentials: new Map([...state.credentials].map(([k, v]) => [k, { ...v }])),
+    entries: [...state.entries],
+    sessions: new Map([...state.sessions].map(([k, v]) => [k, { ...v }])),
+    revoked: new Set(state.revoked),
+    users: new Map([...state.users].map(([k, v]) => [k, { ...v }])),
+  };
+}
+
+/**
+ * @param users        seed rows: { userId, email, masterPasswordHash, ... }
+ * @param knownSessions session ids to pre-register as live.
+ * @param failAppendOn  an ACTIONS value whose audit append should throw, to
+ *                      drive the "unlogged action must not stand" tests.
+ */
+function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = null } = {}) {
+  const state = {
+    credentials: new Map(),
+    entries: [],
+    sessions: new Map(knownSessions.map((id) => [id, { sessionId: id, userId: 'user-42' }])),
+    revoked: new Set(),
+    users: new Map(users.map((u) => [u.userId, { failedAttempts: 0, isLocked: false, ...u }])),
+  };
+
+  const appendContexts = [];
+
+  async function transaction(fn) {
+    const before = snapshot(state);
+    const tx = { id: crypto.randomUUID() };
+    try {
+      return await fn(tx);
+    } catch (err) {
+      Object.assign(state, before);
+      throw err;
+    }
+  }
+
+  // The audit log's only writer. Signature matches createAuditLog's `append`.
+  const append = jest.fn(async (entry, context) => {
+    appendContexts.push(context);
+    if (failAppendOn && entry.action === failAppendOn) {
+      throw new Error('audit append failed');
+    }
+    state.entries.push(entry);
+  });
+
+  const credentials = {
+    transaction,
+    async add(tx, { userId, title, url, username, encryptedPassword }) {
+      const itemId = crypto.randomUUID();
+      const now = new Date();
+      const credential = {
+        itemId,
+        userId,
+        title,
+        url: url ?? null,
+        username: username ?? null,
+        encryptedPassword,
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.credentials.set(itemId, credential);
+      return { ...credential };
+    },
+    // Ownership is checked here, in the store, not in the route: business
+    // rule 6 holds even if a future route forgets to ask.
+    async get({ userId, itemId }) {
+      const credential = state.credentials.get(itemId);
+      return credential && credential.userId === userId ? { ...credential } : null;
+    },
+    async update(tx, { userId, itemId, patch }) {
+      const credential = state.credentials.get(itemId);
+      if (!credential || credential.userId !== userId) {
+        return null;
+      }
+      const updated = { ...credential, ...patch, updatedAt: new Date() };
+      state.credentials.set(itemId, updated);
+      return { ...updated };
+    },
+    async remove(tx, { userId, itemId }) {
+      const credential = state.credentials.get(itemId);
+      if (!credential || credential.userId !== userId) {
+        return false;
+      }
+      state.credentials.delete(itemId);
+      return true;
+    },
+  };
+
+  const sessions = {
+    transaction,
+    async start(tx, { userId }) {
+      const sessionId = crypto.randomUUID();
+      state.sessions.set(sessionId, { sessionId, userId });
+      return { sessionId };
+    },
+    async revoke(tx, sessionId) {
+      state.revoked.add(sessionId);
+    },
+    // Fail closed. A session the store has never heard of is treated as
+    // revoked, not as fine: a token naming a session whose row was rolled
+    // back would otherwise be honoured until its own expiry, and revocation
+    // would have a hole exactly the size of a failed login transaction.
+    async isRevoked(sessionId) {
+      return !state.sessions.has(sessionId) || state.revoked.has(sessionId);
+    },
+  };
+
+  const users_ = {
+    async findById(userId) {
+      return state.users.get(userId) ?? null;
+    },
+    async findByEmail(email) {
+      return [...state.users.values()].find((u) => u.email === email) ?? null;
+    },
+    async recordFailedAttempt(userId) {
+      const user = state.users.get(userId);
+      user.failedAttempts += 1;
+      if (user.failedAttempts >= 5) {
+        user.isLocked = true;
+      }
+    },
+    async resetFailedAttempts(userId) {
+      state.users.get(userId).failedAttempts = 0;
+    },
+  };
+
+  // Newest first, with entryId breaking ties so the ordering is total. Two
+  // entries can share a millisecond; without the tiebreak, "everything older
+  // than this timestamp" would either skip one or repeat it.
+  const newestFirst = (a, b) =>
+    b.timestamp.getTime() - a.timestamp.getTime() || (a.entryId < b.entryId ? 1 : -1);
+
+  // `WHERE (timestamp, entryId) < (?, ?)` — strictly older than the cursor
+  // position. Compared rather than looked up, so a cursor naming a row that no
+  // longer exists still lands in the right place.
+  const strictlyOlder = (after) => (entry) => {
+    if (!after) {
+      return true;
+    }
+    const millis = entry.timestamp.getTime();
+    return (
+      millis < after.timestampMillis ||
+      (millis === after.timestampMillis && entry.entryId < after.entryId)
+    );
+  };
+
+  const auditReader = {
+    transaction,
+    async list({ userId, limit, after = null }) {
+      return state.entries
+        .filter((e) => e.userId === userId)
+        .filter(strictlyOlder(after))
+        .sort(newestFirst)
+        .slice(0, limit)
+        .map((e) => e.toJSON());
+    },
+    async get({ userId, entryId }) {
+      const entry = state.entries.find((e) => e.entryId === entryId && e.userId === userId);
+      return entry ? entry.toJSON() : null;
+    },
+  };
+
+  return {
+    state,
+    append,
+    appendContexts,
+    credentials,
+    sessions,
+    users: users_,
+    auditReader,
+    // Convenience for assertions.
+    actions: () => state.entries.map((e) => e.action),
+    entriesFor: (userId) => state.entries.filter((e) => e.userId === userId),
+  };
+}
+
+module.exports = { createFakeDatabase };

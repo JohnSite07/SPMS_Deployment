@@ -32,6 +32,9 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0003 — Two service accounts and keyless Workload Identity Federation](decisions/0003-two-service-accounts-and-keyless-wif.md)
 - [0004 — Human database access: Cloud SQL Studio, not a network path](decisions/0004-human-db-access-cloud-sql-studio.md)
 - [0005 — Temporary public IP on Cloud SQL for the development phase](decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md)
+- [0006 — Enforcing the append-only audit log in application code](decisions/0006-append-only-audit-log-enforcement.md)
+- [0007 — Stateful session revocation for logout](decisions/0007-stateful-session-revocation.md)
+- [0008 — An in-app `admin` role for the audit-history view](decisions/0008-in-app-admin-role.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment
