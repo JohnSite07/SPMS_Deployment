@@ -20,6 +20,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 ### Architecture
 - [Architecture overview](architecture/overview.md) — end-to-end shape, zero-knowledge posture, runtime topology.
 - [Domain model](architecture/domain-model.md) — the 14-class object model (the app data-model blueprint).
+- [AUDIT_ENTRIES schema](architecture/audit-entries-schema.md) — the reconciled audit table (columns, append-only grant, `ON DELETE RESTRICT`), and its deltas from the first-created version.
 - [System design summary](architecture/system-design-summary.md) — Developer-team-owned Parts I/II/IV of the M4 System Design (software design, database, test plan) at a glance, plus open cross-team items.
 
 ### Requirements
