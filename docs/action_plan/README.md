@@ -15,5 +15,8 @@ A PRD must be **Approved** by the user before execution starts. Once executed, i
 | [0005](0005-cicd-pipeline.md) | CI/CD Pipeline & App Skeleton | Done |
 | [0006](0006-developer-handover.md) | Developer Team Handover Package | In Progress (dry run underway) |
 | [0007](0007-temporary-public-db-access.md) | Temporary Public DB Access (dev phase, reversible) | Done (flip back before presentation) |
+| [0008](0008-audit-log-and-vault-routes.md) | Audit Log, Vault Routes, and Admin History View | Done (retrospective) |
 
 Execution order: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 (0002 and 0003 are independent of each other; the rest are sequential). Each PRD is executed only after user approval, and each ends with an infra-reviewer pass and its documentation deliverables.
+
+0008 is the first **application-code** PRD rather than an infrastructure one, and the first written *after* execution rather than before — a documented departure from the approval gate, noted at the top of the PRD itself. It creates no GCP resource and runs no billable command.
