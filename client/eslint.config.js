@@ -36,4 +36,48 @@ export default [
       'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  // Enforced conventions (see .claude/rules/frontend.md). These are the
+  // mechanical teeth behind the frontend rules; violations fail CI's
+  // client-checks job, so they cannot be merged.
+  {
+    files: ['src/**/*.{js,jsx}'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'fetch',
+          message:
+            'Call the API through src/services/api-client.js (get/post/put/del), never fetch() directly — see .claude/rules/frontend.md.',
+        },
+        {
+          name: 'localStorage',
+          message:
+            'Do not persist to localStorage — the session token is in-memory only (ADR 0010). See .claude/rules/frontend.md.',
+        },
+        {
+          name: 'sessionStorage',
+          message:
+            'Do not persist to sessionStorage — the session token is in-memory only (ADR 0010). See .claude/rules/frontend.md.',
+        },
+      ],
+    },
+  },
+  // api-client.js IS the fetch wrapper — the one place fetch is allowed. Web
+  // storage stays banned everywhere, including here.
+  {
+    files: ['src/services/api-client.js'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'localStorage',
+          message: 'Do not persist to localStorage — the session token is in-memory only (ADR 0010).',
+        },
+        {
+          name: 'sessionStorage',
+          message: 'Do not persist to sessionStorage — the session token is in-memory only (ADR 0010).',
+        },
+      ],
+    },
+  },
 ];
