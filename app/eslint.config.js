@@ -29,6 +29,8 @@ module.exports = [
         it: 'readonly',
         expect: 'readonly',
         jest: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
         beforeEach: 'readonly',
         afterEach: 'readonly',
       },

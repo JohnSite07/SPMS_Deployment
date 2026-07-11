@@ -1,3 +1,5 @@
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const { createAuthMiddleware } = require('./middleware/authenticate');
 const { errorHandler } = require('./middleware/error-handler');
@@ -52,14 +54,10 @@ function createApp({
   // hops) rather than assumed — direct *.run.app and an external HTTPS load
   // balancer do not agree.
 
-  // Mounted before every route, not attached per-route: any route added below
-  // requires a valid bearer token unless its method+path is named in the
-  // middleware's public allowlist. See middleware/authenticate.js.
-  app.use(createAuthMiddleware({ tokenService, sessions }));
-
   // Health endpoint: used by the CD pipeline's smoke test against the
   // candidate revision before traffic is shifted. Keep it dependency-free
-  // (no DB call) so a cold start always answers.
+  // (no DB call) so a cold start always answers. Registered ahead of the SPA
+  // fallback below so that catch-all can never shadow it.
   // NOTE: the path must NOT be /healthz — Google Front End reserves that
   // path on run.app domains and returns its own 404 before the request
   // reaches the container (found live in the first CD run).
@@ -67,9 +65,44 @@ function createApp({
     res.status(200).json({ status: 'ok', service: 'securevault' });
   });
 
-  app.get('/', (req, res) => {
-    res.status(200).send('SecureVault deployment skeleton - application under construction.');
-  });
+  // --- Frontend (Option A, ADR 0009): serve the built React SPA ------------
+  // Mounted BEFORE the auth middleware on purpose: the app shell and its
+  // hashed assets are public (they hold no secrets — vault data is fetched
+  // over /api with a bearer token, and stays encrypted at rest), and a
+  // browser reload/deep-link on a client-side route (/credentials, …) must
+  // return index.html rather than be caught by default-deny auth and 401.
+  //
+  // Conditional on the build being present: in tests and backend-only dev the
+  // dist folder is absent, so nothing here mounts and the auth posture below
+  // is exactly as before. In the container the multi-stage Dockerfile copies
+  // the build to ../client/dist (relative to this file); CLIENT_DIST_PATH can
+  // override the location for local end-to-end checks.
+  const clientDist = process.env.CLIENT_DIST_PATH || path.join(__dirname, '..', 'client', 'dist');
+  if (fs.existsSync(path.join(clientDist, 'index.html'))) {
+    app.use(express.static(clientDist));
+    // SPA fallback: a GET that isn't under /api and matched no static file
+    // gets the app shell. /api is excluded so API 404s stay JSON (not a 200
+    // HTML page) and no data route is ever answered by this public handler.
+    // The match is anchored and case-insensitive to mirror Express's own
+    // case-insensitive routing: `/API/credentials` reaches the real
+    // (auth-protected) router, so the fallback must not answer it either, and
+    // bare `/api` is excluded too.
+    const API_PREFIX = /^\/api(\/|$)/i;
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || API_PREFIX.test(req.path)) {
+        return next();
+      }
+      return res.sendFile(path.join(clientDist, 'index.html'));
+    });
+  }
+  // -------------------------------------------------------------------------
+
+  // Mounted before every route below, not attached per-route: any /api route
+  // added below requires a valid bearer token unless its method+path is named
+  // in the middleware's public allowlist. See middleware/authenticate.js.
+  // (Static assets and the SPA shell were already served above, ahead of this,
+  // so they never reach default-deny.)
+  app.use(createAuthMiddleware({ tokenService, sessions }));
 
   // POST here is public — it is the request that creates the session every
   // other route requires. DELETE here is not. See PUBLIC_PATHS.

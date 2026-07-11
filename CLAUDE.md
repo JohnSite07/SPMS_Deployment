@@ -25,7 +25,8 @@ SPMS_Deployment/
 ├── .github/workflows/
 │   ├── ci.yml          # lint, test, terraform plan — runs on PRs
 │   └── cd.yml          # build, push, apply, deploy — runs on push to main
-├── app/                # Node.js / Express source + Dockerfile
+├── app/                # Node.js / Express source + Dockerfile (also serves the built SPA)
+├── client/             # React + Vite single-page app (frontend)
 ├── terraform/
 │   ├── main.tf         # wires modules together
 │   ├── variables.tf
@@ -50,7 +51,7 @@ SPMS_Deployment/
 
 Three zones: **GitHub** (code + CI/CD), the **GCP project** (all runtime resources), and **external actors/services** (users, 2FA, SMTP).
 
-- **Compute:** Cloud Run (`google_cloud_run_v2_service`), 1 vCPU / 512 MiB, `min=0` / `max=2`. Terminates HTTPS via a Google-managed cert; scales to zero when idle.
+- **Compute:** Cloud Run (`google_cloud_run_v2_service`), 1 vCPU / 512 MiB, `min=0` / `max=2`. Terminates HTTPS via a Google-managed cert; scales to zero when idle. The single Express container serves **both** the JSON API (`/api/*`) and the built React SPA (static assets + an `index.html` fallback for client-side routes) — Option A, no separate frontend host or CDN (see ADR 0009).
 - **Database:** Cloud SQL for MySQL **8.0** (`ENTERPRISE` edition — MySQL 8.4 requires Enterprise Plus, whose smallest tiers break the budget; see PRD 0002 outcome), `db-f1-micro`, 10 GB SSD, **private IP only** — never publicly exposed, reached from Cloud Run over the VPC via **Direct VPC egress** (deliberately not a Serverless VPC connector, to avoid an always-on cost). This is the largest cost line; it can be stopped between sessions.
 - **Storage:** two Cloud Storage buckets — one versioned bucket for Terraform remote state, one for encrypted document blobs (lifecycle rules expire old objects).
 - **Secrets:** Secret Manager holds DB creds, JWT key, AES key, SMTP creds (~6 secrets), injected into Cloud Run at start-up under its own service account. Secrets never live in source, the Docker image, or committed env files. Rotate by adding a new secret version — no code redeploy needed.
@@ -71,8 +72,8 @@ Everything is provisioned through Terraform — nothing is clicked together in t
 
 Two workflows, gated by branch:
 
-- **`ci.yml` (on pull request)** — must pass before merge: ESLint (lint) → `npm test` / Jest (unit + integration) → `terraform fmt`/`validate`/`plan`.
-- **`cd.yml` (on push to `main`)** — authenticate (WIF) → `docker buildx` build tagged with `$GITHUB_SHA` → push to Artifact Registry → `terraform apply` → `gcloud run deploy` → smoke-test → shift traffic.
+- **`ci.yml` (on pull request)** — must pass before merge: backend ESLint + `npm test` / Jest (unit + integration), the `client/` frontend lint + Vite build (`client-checks` job), and `terraform fmt`/`validate`/`plan`.
+- **`cd.yml` (on push to `main`)** — authenticate (WIF) → `docker buildx` build (context is the **repo root** so the multi-stage Dockerfile builds `client/` and bundles `client/dist` alongside the API) tagged with `$GITHUB_SHA` → push to Artifact Registry → `terraform apply` → `gcloud run deploy` → smoke-test → shift traffic.
 
 **Deployment strategy (revision-based, built-in rollback):** Cloud Run deploys are immutable revisions. The pipeline deploys the new revision **with no traffic** (`--no-traffic --tag=candidate`), smoke-tests its direct URL, and only then shifts 100% of traffic. If the smoke test fails, traffic stays on the last good revision — the deploy is a no-op. Rollback = re-point traffic at an earlier revision.
 
@@ -81,6 +82,8 @@ Two workflows, gated by branch:
 ## Application stack
 
 Node.js + Express, MySQL, AES-256 encryption at rest, TLS in transit, two-factor authentication. The app must be container-first: it reads all config/secrets from the environment (populated from Secret Manager at runtime), connects to Cloud SQL over the private VPC path, and writes document blobs to Cloud Storage. App commands once `app/` exists: `npm install`, `npm test` (Jest — single test via `npm test -- <pattern>` or `npx jest <path> -t "<name>"`), `npm run lint` (ESLint), and a `Dockerfile` build.
+
+**Frontend (`client/`):** a React 18 single-page app built with Vite, routed with React Router v6 in `BrowserRouter` mode. Commands (run from `client/`): `npm install`, `npm run dev` (local dev server), `npm run build` (emits `client/dist/`), `npm run lint`. It is **served by the Express app**, not a separate host: `app/src/app.js` mounts `express.static('client/dist')` plus an SPA `index.html` fallback **ahead of the auth middleware** — so the shell and hashed assets are public while every `/api/*` data route stays behind the bearer token. The fallback excludes `/api` (anchored, case-insensitive) so API 404s stay JSON. Serving is conditional on the build being present (`CLIENT_DIST_PATH` overrides the location), so tests and backend-only dev keep the default-deny posture. The multi-stage `app/Dockerfile` builds `client/` and copies `dist` into the runtime image; because it references both `app/` and `client/`, the Docker build context is the **repo root** (`cd.yml` uses `context: .`, `file: app/Dockerfile`). See ADR 0009 (stack + serving decision) and PRDs 0010/0011. Zero-knowledge still holds: vault contents are encrypted client-side in later work — the public shell holds no secrets.
 
 **Build the app to its spec, not from scratch.** The data model and core classes follow [docs/architecture/domain-model.md](docs/architecture/domain-model.md); behaviour follows the use cases in [docs/requirements/functional-requirements.md](docs/requirements/functional-requirements.md). A few business rules are easy to get wrong and must be enforced in code: master password is **hashed-only, never stored** and **≥12 chars**; vault **auto-locks after 10 min**; **5 failed logins → 15-min lockout**; the **audit log is append-only**; uploads limited to **PDF/image ≤10 MB**; passwords flagged weak, or reused within **30 days**. Full list in the requirements doc.
 

@@ -1,0 +1,19 @@
+// SecureVault design-token layer (PRD 0013). This one file is the single
+// source for the app's colours, corner radius, and type: set Bootstrap's SASS
+// variables here, then compile Bootstrap with them so every react-bootstrap
+// component picks the tokens up automatically. Edit tokens here, nowhere else.
+//
+// Driver: System Design PDF Part I §2 — "a shared header, button styles, and
+// iconography across all screens" (see docs/architecture/ui-ux-guidelines.md).
+
+// Bootstrap functions first, so token overrides may use its colour helpers.
+@import "bootstrap/scss/functions";
+
+// ── Design tokens (override Bootstrap defaults) ─────────────────────────────
+$primary: #3b4a6b; // SecureVault brand — placeholder, tune freely
+$border-radius: 0.5rem;
+$font-family-sans-serif: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+// ────────────────────────────────────────────────────────────────────────────
+
+// Compile the rest of Bootstrap using the tokens above.
+@import "bootstrap/scss/bootstrap";

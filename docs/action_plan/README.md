@@ -16,6 +16,11 @@ A PRD must be **Approved** by the user before execution starts. Once executed, i
 | [0006](0006-developer-handover.md) | Developer Team Handover Package | In Progress (dry run underway) |
 | [0007](0007-temporary-public-db-access.md) | Temporary Public DB Access (dev phase, reversible) | Done (flip back before presentation) |
 | [0008](0008-audit-log-and-vault-routes.md) | Audit Log, Vault Routes, and Admin History View | Done (retrospective) |
+| [0009](0009-storage-layer-and-auth-wiring.md) | Storage Layer & Auth Wiring (MySQL ports + crypto callbacks) | Draft (awaiting approval) |
+| [0010](0010-react-frontend-scaffold.md) | React Frontend Scaffold (Vite + React Router) | Done |
+| [0011](0011-frontend-serving-and-cd-integration.md) | Frontend Serving & CD Integration (Express static + SPA fallback, Docker/CI-CD) | Done |
+| [0012](0012-frontend-api-client-foundation.md) | Frontend API Client Foundation (fetch wrapper, token handling, auth service) | Done |
+| [0013](0013-design-system-baseline.md) | Design System Baseline (react-bootstrap + SASS theme) | Done |
 
 Execution order: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 (0002 and 0003 are independent of each other; the rest are sequential). Each PRD is executed only after user approval, and each ends with an infra-reviewer pass and its documentation deliverables.
 
