@@ -8,13 +8,16 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "bootstrap": "^5.3.8",
     "react": "^18.3.1",
+    "react-bootstrap": "^2.10.10",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2"
   },
@@ -23,6 +26,8 @@
     "@vitejs/plugin-react": "^4.3.1",
     "eslint": "^9.0.0",
     "eslint-plugin-react": "^7.35.0",
-    "vite": "^5.4.0"
+    "sass": "^1.101.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
   }
 }

@@ -19,6 +19,11 @@ export default [
         document: 'readonly',
         window: 'readonly',
         console: 'readonly',
+        fetch: 'readonly',
+        Headers: 'readonly',
+        Response: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
       },
     },
     settings: {

@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import './styles/theme.scss'; // design-token layer + Bootstrap, loaded app-wide (PRD 0013)
 import App from './App.jsx';
 
 // Single BrowserRouter for the whole app. BrowserRouter (clean paths) means

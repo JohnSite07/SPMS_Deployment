@@ -22,6 +22,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [Domain model](architecture/domain-model.md) — the 14-class object model (the app data-model blueprint).
 - [AUDIT_ENTRIES schema](architecture/audit-entries-schema.md) — the reconciled audit table (columns, append-only grant, `ON DELETE RESTRICT`), and its deltas from the first-created version.
 - [System design summary](architecture/system-design-summary.md) — Developer-team-owned Parts I/II/IV of the M4 System Design (software design, database, test plan) at a glance, plus open cross-team items.
+- [UI/UX guidelines](architecture/ui-ux-guidelines.md) — distilled from System Design Part I §2: the ten design principles, navigation map, login/2FA flow, and the six screens/wireframes.
 
 ### Requirements
 - [Functional requirements](requirements/functional-requirements.md) — use cases, events, business rules.
@@ -37,6 +38,8 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0007 — Stateful session revocation for logout](decisions/0007-stateful-session-revocation.md)
 - [0008 — An in-app `admin` role for the audit-history view](decisions/0008-in-app-admin-role.md)
 - [0009 — Frontend stack and serving model: React/Vite served by Cloud Run, not a CDN bucket](decisions/0009-frontend-stack-and-serving-model.md)
+- [0010 — In-memory session-token storage in the SPA (no localStorage/sessionStorage/cookies)](decisions/0010-in-memory-session-token-storage.md)
+- [0011 — Design-system baseline: react-bootstrap + a single SASS token file](decisions/0011-design-system-baseline.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment
