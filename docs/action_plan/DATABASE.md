@@ -38,7 +38,7 @@ Run the SQL statements directly in your MySQL client (as the admin/migration use
 | 4   | `CREDENTIALS`             | `item_id`              | subtype; encrypted password         |
 | 5   | `SECURE_DOCUMENTS`        | `item_id`              | subtype; encrypted blob             |
 | 6   | `TWO_FACTOR_CONFIGS`      | `tfa_id`               | encrypted 2FA secret                |
-| 7   | `SESSIONS`                | `session_id`           | SHA-256 token hash                  |
+| 7   | `SESSIONS`                | `session_id`           | stateful revocation (no token hash) |
 | 8   | `AUDIT_ENTRIES`           | `entry_id`             | append-only                         |
 | 9   | `PASSWORD_HEALTH_REPORTS` | `report_id`            |                                     |
 | 10  | `REPORT_FINDINGS`         | `(report_id, item_id)` | junction (M:N)                      |
@@ -46,8 +46,9 @@ Run the SQL statements directly in your MySQL client (as the admin/migration use
 
 **Secret storage:** credential passwords, document blobs, and 2FA secrets are
 stored as AES-256-GCM ciphertext, each with its own 12-byte IV and 16-byte auth
-tag. Master passwords are bcrypt/Argon2id hashes; session tokens are SHA-256
-hashes. No plaintext secrets are ever stored.
+tag. Master passwords are bcrypt/Argon2id hashes; session tokens are stateless
+JWTs revoked by `session_id` (no token hash stored — PRD 0014 / ADR 0007). No
+plaintext secrets are ever stored.
 
 ---
 
@@ -69,7 +70,7 @@ hashes. No plaintext secrets are ever stored.
 --   * Master password: salted hash only (Argon2id/bcrypt), never plaintext.
 --   * Credential passwords, document blobs, 2FA secrets: AES-256-GCM ciphertext,
 --     each with its own 12-byte IV (nonce) and 16-byte auth tag.
---   * Session tokens: SHA-256 hash only, raw token never stored.
+--   * Session tokens: stateless JWTs, revoked by session_id (no hash stored).
 --
 -- Tables are created parent-before-child so the foreign keys resolve.
 -- =============================================================================
@@ -95,6 +96,7 @@ CREATE TABLE USERS (
   failed_attempts      INT          NOT NULL DEFAULT 0,      -- brute-force counter
   is_locked            BOOLEAN      NOT NULL DEFAULT FALSE,
   lockout_until        DATETIME     NULL,                    -- drives the 15-min auto-unlock
+  is_deleted           BOOLEAN      NOT NULL DEFAULT FALSE,  -- soft-delete: AUDIT_ENTRIES FK is RESTRICT, so users are never hard-deleted (PRD 0014)
   created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT PK_USERS           PRIMARY KEY (user_id),
   CONSTRAINT UQ_USERS_EMAIL     UNIQUE (email),
@@ -204,17 +206,17 @@ CREATE TABLE TWO_FACTOR_CONFIGS (
 CREATE TABLE SESSIONS (
   session_id INT           NOT NULL AUTO_INCREMENT,
   user_id    INT           NOT NULL,
-  token_hash VARBINARY(32) NOT NULL,                        -- SHA-256 of token; raw token never stored
   started_at DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   expires_at DATETIME      NOT NULL,                        -- drives idle auto-lock
   CONSTRAINT PK_SESSIONS        PRIMARY KEY (session_id),
   CONSTRAINT FK_SESSIONS_USERS  FOREIGN KEY (user_id)
        REFERENCES USERS(user_id) ON DELETE CASCADE,
-  CONSTRAINT CK_SESSIONS_TOKEN  CHECK (OCTET_LENGTH(token_hash) = 32),  -- SHA-256 is exactly 32 bytes
   CONSTRAINT CK_SESSIONS_EXPIRY CHECK (expires_at > started_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE UNIQUE INDEX IX_SESSIONS_TOKEN_HASH ON SESSIONS(token_hash);
-CREATE INDEX        IX_SESSIONS_EXPIRES    ON SESSIONS(expires_at);
+-- No token_hash: session tokens are stateless JWTs whose jti IS session_id.
+-- Revocation is stateful by session_id (row absent or expired => revoked),
+-- not by looking up a stored token hash. See PRD 0014 / ADR 0007.
+CREATE INDEX IX_SESSIONS_EXPIRES ON SESSIONS(expires_at);
 
 -- -----------------------------------------------------------------------------
 -- 8. AUDIT_ENTRIES  (append-only)
@@ -383,9 +385,9 @@ INSERT INTO TWO_FACTOR_CONFIGS (tfa_id, user_id, method, secret_enc, secret_iv, 
   (2, 2, 'EMAIL', 0x2233445566778899, 0x0802030405060708090A0B0C, 0x801112131415161718191A1B1C1D1E1F, FALSE);
 
 -- ---- 7. SESSIONS -----------------------------------------------------------
-INSERT INTO SESSIONS (session_id, user_id, token_hash, started_at, expires_at) VALUES
-  (1, 1, 0x1111111111111111111111111111111111111111111111111111111111111111, NOW(), NOW() + INTERVAL 1 HOUR),
-  (2, 2, 0x2222222222222222222222222222222222222222222222222222222222222222, NOW() - INTERVAL 2 DAY, NOW() - INTERVAL 47 HOUR);
+INSERT INTO SESSIONS (session_id, user_id, started_at, expires_at) VALUES
+  (1, 1, NOW(), NOW() + INTERVAL 1 HOUR),
+  (2, 2, NOW() - INTERVAL 2 DAY, NOW() - INTERVAL 47 HOUR);
 
 -- ---- 8. AUDIT_ENTRIES (append-only) ---------------------------------------
 INSERT INTO AUDIT_ENTRIES (user_id, action, ip_address, target_user_id, actor_user_id) VALUES
@@ -544,10 +546,10 @@ DELETE FROM TWO_FACTOR_CONFIGS WHERE user_id = ?;
 
 
 -- ===== 7. SESSIONS =========================================================
-INSERT INTO SESSIONS (user_id, token_hash, expires_at) VALUES (?, ?, ?);
--- Validate a presented token: app hashes the raw token (SHA-256) then looks it up
+INSERT INTO SESSIONS (user_id, expires_at) VALUES (?, ?);
+-- Validate a session by its id (the JWT's jti): live iff the row exists and is unexpired.
 SELECT session_id, user_id, started_at, expires_at
-  FROM SESSIONS WHERE token_hash = ? AND expires_at > NOW();
+  FROM SESSIONS WHERE session_id = ? AND expires_at > NOW();
 UPDATE SESSIONS SET expires_at = ? WHERE session_id = ?;         -- sliding idle-timeout renewal
 DELETE FROM SESSIONS WHERE session_id = ?;                       -- logout
 DELETE FROM SESSIONS WHERE user_id = ?;                          -- logout everywhere
