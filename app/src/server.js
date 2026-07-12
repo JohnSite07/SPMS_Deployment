@@ -1,7 +1,13 @@
 const { createApp } = require('./app');
 const { loadJwtConfig } = require('./config/env');
-const { createUnimplementedPorts } = require('./config/unimplemented-ports');
-const { createAuditLog } = require('./services/audit-log');
+const { loadDbConfig } = require('./db/pool');
+const { createUsersPort } = require('./ports/users');
+const { createSessionsPort } = require('./ports/sessions');
+const { createCredentialsPort } = require('./ports/credentials');
+const { createAuditReaderPort, createAuditAppend } = require('./ports/audit-reader');
+const { verifyPassword } = require('./services/password-hasher');
+const { verifyTwoFactorCode } = require('./services/two-factor-verifier');
+const { createAuditLog, ACTIONS } = require('./services/audit-log');
 const { createSessionIssuer } = require('./services/session-issuer');
 
 // Cloud Run injects PORT; 8080 is its conventional default and works locally.
@@ -9,47 +15,53 @@ const port = Number(process.env.PORT) || 8080;
 
 // Validate the env contract before binding the port. A revision missing its
 // secrets should fail its startup probe and never receive traffic, rather
-// than serve /health happily and 500 on the first login.
+// than serve /health happily and 500 on the first login. Both the JWT
+// signing key and the DB connection config are load-bearing for every
+// authenticated route, so both are checked here, eagerly, before `listen()`.
 try {
   loadJwtConfig();
+  loadDbConfig();
 } catch (err) {
   // eslint-disable-next-line no-console
   console.error(`startup aborted: ${err.message}`);
   process.exit(1);
 }
 
-// Storage is not wired yet, so every port throws on use. /health and / are
-// public and touch none of them; every other route answers 500 rather than
-// pretending. See config/unimplemented-ports.js.
-const ports = createUnimplementedPorts();
+const users = createUsersPort();
+const sessions = createSessionsPort();
+const credentials = createCredentialsPort();
+const auditReader = createAuditReaderPort();
 
-// `append` throws, so nothing can be logged, so nothing that must be logged
-// can succeed. That is the intended posture for a skeleton, not a bug.
-const audit = createAuditLog({
-  append: () => {
-    throw new Error('audit append is not implemented: no storage layer is wired yet');
-  },
-});
+// Separate from `auditReader` on purpose (see app.js's own comment on this):
+// one object can append and cannot read, the other can read and cannot
+// append.
+const audit = createAuditLog({ append: createAuditAppend() });
 
-// NOTE: onDeviceSeen is called *synchronously* by issueSessionToken and its
-// return value is discarded. Do not bind it directly to audit.logAction: the
-// returned promise would never be awaited, so a failed sighting write would
-// let the login succeed and then surface as an unhandledRejection — the exact
-// outcome session-issuer.js's own comment says must not happen. Recording a
-// device sighting properly needs issueSessionToken to become async.
+// Bound to the same audit log every route writes through, and now safe to
+// await: issueSessionToken() is async (see services/session-issuer.js), so a
+// failed device-sighting write rejects the login's own promise chain instead
+// of becoming an unawaited, fire-and-forget rejection. A new device is
+// recorded as `device.unrecognized`, a known one as `device.recognized` —
+// UC-01's post-condition is "login logged", and business rule 4 is "tell the
+// user about a new device", so both outcomes are worth a row.
 const issuer = createSessionIssuer({
-  verifyPassword: () => {
-    throw new Error('verifyPassword is not implemented');
-  },
-  verifyTwoFactorCode: () => {
-    throw new Error('verifyTwoFactorCode is not implemented');
-  },
-  onDeviceSeen: () => {
-    throw new Error('onDeviceSeen is not implemented');
-  },
+  verifyPassword,
+  verifyTwoFactorCode,
+  onDeviceSeen: ({ userId, known }) =>
+    audit.logAction({
+      userId,
+      action: known ? ACTIONS.DEVICE_RECOGNIZED : ACTIONS.DEVICE_UNRECOGNIZED,
+      // No request object reaches this callback (session-issuer.js only
+      // knows userId/deviceId/known/sessionId) and no transaction context is
+      // threaded through it either: the device sighting is a courtesy
+      // best-effort record alongside the login, not a write the login's own
+      // atomicity depends on the way login.succeeded is. ipAddress is
+      // therefore null, same as any action with no request behind it.
+      ipAddress: null,
+    }),
 });
 
-createApp({ ...ports, audit, issuer }).listen(port, () => {
+createApp({ users, sessions, credentials, auditReader, audit, issuer }).listen(port, () => {
   // eslint-disable-next-line no-console
   console.log(`securevault listening on ${port}`);
 });

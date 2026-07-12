@@ -162,7 +162,14 @@ function createSessionIssuer({
     // unconditionally (business rule 4 read as "a new device is worth
     // telling the user about", not "an old device may skip a factor"; see
     // UC-01, which branches nowhere). It only decides what gets recorded.
-    issueSessionToken({ proof, sessionId, deviceToken } = {}) {
+    //
+    // async so `onDeviceSeen` can be awaited: it writes an AuditEntry, and
+    // services/audit-log.js's own failure policy — never fire-and-forget a
+    // write whose rejection would otherwise surface as an unhandledRejection
+    // after the caller has already moved on — only holds if this method's
+    // caller can await it too. Every caller does (routes/session.js,
+    // tests/session-issuer.test.js).
+    async issueSessionToken({ proof, sessionId, deviceToken } = {}) {
       const twoFactorProof = consumeProof(proof, {
         expectedFactor: FACTOR.TWO_FACTOR,
         nowSeconds: nowSeconds(),
@@ -178,7 +185,7 @@ function createSessionIssuer({
       // append-only (business rule 7). If the sighting cannot be recorded,
       // the login does not happen. An unlogged login is worse than a failed
       // one.
-      onDeviceSeen({ userId, deviceId: device.deviceId, known: device.known, sessionId });
+      await onDeviceSeen({ userId, deviceId: device.deviceId, known: device.known, sessionId });
 
       return {
         token: tokens.sign({ userId, role, sessionId }),
