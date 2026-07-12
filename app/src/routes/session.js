@@ -105,7 +105,7 @@ function createSessionRoutes({ users, sessions, issuer, audit } = {}) {
         // The device sighting is written by the issuer's onDeviceSeen hook,
         // which the app wires to this same audit log. It runs inside this
         // transaction only if the hook was bound to it; see app.js.
-        const issued = issuer.issueSessionToken({
+        const issued = await issuer.issueSessionToken({
           proof,
           sessionId: started.sessionId,
           deviceToken,

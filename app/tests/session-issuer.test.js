@@ -54,7 +54,7 @@ async function loginToProof(issuer, user = USER) {
 describe('happy path', () => {
   it('issues a verifiable token after password then 2FA', async () => {
     const { issuer } = build();
-    const { token } = issuer.issueSessionToken({
+    const { token } = await issuer.issueSessionToken({
       proof: await loginToProof(issuer),
       sessionId: 'sess-7',
     });
@@ -72,15 +72,15 @@ describe('the password factor cannot be skipped', () => {
     const { issuer } = build();
     const forged = { factor: 'two-factor', userId: 'user-42', role: 'owner', issuedAtSeconds: 1_700_000_000 };
 
-    expect(() => issuer.issueSessionToken({ proof: forged })).toThrow(AuthenticationError);
-    expect(() => issuer.issueSessionToken({ proof: forged })).toThrow(
+    await expect(issuer.issueSessionToken({ proof: forged })).rejects.toThrow(AuthenticationError);
+    await expect(issuer.issueSessionToken({ proof: forged })).rejects.toThrow(
       expect.objectContaining({ code: 'PROOF_INVALID' })
     );
   });
 
-  it.each([undefined, null, 'proof', 42, {}, []])('rejects %p as a proof', (proof) => {
+  it.each([undefined, null, 'proof', 42, {}, []])('rejects %p as a proof', async (proof) => {
     const { issuer } = build();
-    expect(() => issuer.issueSessionToken({ proof })).toThrow(
+    await expect(issuer.issueSessionToken({ proof })).rejects.toThrow(
       expect.objectContaining({ code: 'PROOF_INVALID' })
     );
   });
@@ -98,7 +98,7 @@ describe('the 2FA factor cannot be skipped', () => {
     const { issuer } = build();
     const passwordProof = await loginTo2fa(issuer);
 
-    expect(() => issuer.issueSessionToken({ proof: passwordProof })).toThrow(
+    await expect(issuer.issueSessionToken({ proof: passwordProof })).rejects.toThrow(
       expect.objectContaining({ code: 'PROOF_WRONG_FACTOR' })
     );
   });
@@ -138,8 +138,8 @@ describe('proofs are single-use', () => {
     const { issuer } = build();
     const proof = await loginToProof(issuer);
 
-    expect(issuer.issueSessionToken({ proof }).token).toEqual(expect.any(String));
-    expect(() => issuer.issueSessionToken({ proof })).toThrow(
+    expect((await issuer.issueSessionToken({ proof })).token).toEqual(expect.any(String));
+    await expect(issuer.issueSessionToken({ proof })).rejects.toThrow(
       expect.objectContaining({ code: 'PROOF_INVALID' })
     );
   });
@@ -171,7 +171,7 @@ describe('proofs expire', () => {
     const proof = await loginToProof(issuer);
 
     advanceSeconds(DEFAULT_PROOF_TTL_SECONDS + 1);
-    expect(() => issuer.issueSessionToken({ proof })).toThrow(
+    await expect(issuer.issueSessionToken({ proof })).rejects.toThrow(
       expect.objectContaining({ code: 'PROOF_EXPIRED' })
     );
   });
@@ -181,7 +181,7 @@ describe('proofs expire', () => {
     const proof = await loginToProof(issuer);
 
     advanceSeconds(DEFAULT_PROOF_TTL_SECONDS - 1);
-    expect(issuer.issueSessionToken({ proof }).token).toEqual(expect.any(String));
+    expect((await issuer.issueSessionToken({ proof })).token).toEqual(expect.any(String));
   });
 });
 
@@ -248,7 +248,10 @@ describe('wiring', () => {
 describe('new-device check', () => {
   it('treats a login with no device token as a new device', async () => {
     const { issuer, onDeviceSeen } = build();
-    const result = issuer.issueSessionToken({ proof: await loginToProof(issuer), sessionId: 's1' });
+    const result = await issuer.issueSessionToken({
+      proof: await loginToProof(issuer),
+      sessionId: 's1',
+    });
 
     expect(result.device.known).toBe(false);
     expect(result.device.token).toEqual(expect.any(String));
@@ -262,9 +265,9 @@ describe('new-device check', () => {
 
   it('recognises the same device on a later login and mints no new identity', async () => {
     const { issuer, onDeviceSeen } = build();
-    const first = issuer.issueSessionToken({ proof: await loginToProof(issuer) });
+    const first = await issuer.issueSessionToken({ proof: await loginToProof(issuer) });
 
-    const second = issuer.issueSessionToken({
+    const second = await issuer.issueSessionToken({
       proof: await loginToProof(issuer),
       deviceToken: first.device.token,
     });
@@ -280,13 +283,13 @@ describe('new-device check', () => {
   // The property the whole design rests on: 2FA already ran, unconditionally.
   it('still requires 2FA on a recognised device', async () => {
     const { issuer } = build();
-    const first = issuer.issueSessionToken({ proof: await loginToProof(issuer) });
+    const first = await issuer.issueSessionToken({ proof: await loginToProof(issuer) });
 
     // Password only, on the known device: still refused.
     const passwordProof = await loginTo2fa(issuer);
-    expect(() =>
+    await expect(
       issuer.issueSessionToken({ proof: passwordProof, deviceToken: first.device.token })
-    ).toThrow(expect.objectContaining({ code: 'PROOF_WRONG_FACTOR' }));
+    ).rejects.toThrow(expect.objectContaining({ code: 'PROOF_WRONG_FACTOR' }));
   });
 
   it.each([
@@ -296,7 +299,7 @@ describe('new-device check', () => {
     ['a device token signed with another key', 'eyJhbGciOiJIUzI1NiJ9.e30.bad'],
   ])('falls back to "new device" for %s, never an error', async (_name, deviceToken) => {
     const { issuer } = build();
-    const result = issuer.issueSessionToken({ proof: await loginToProof(issuer), deviceToken });
+    const result = await issuer.issueSessionToken({ proof: await loginToProof(issuer), deviceToken });
 
     expect(result.device.known).toBe(false);
     expect(result.token).toEqual(expect.any(String));
@@ -306,7 +309,7 @@ describe('new-device check', () => {
     const { issuer } = build();
     const other = deviceService.issue('user-99');
 
-    const result = issuer.issueSessionToken({
+    const result = await issuer.issueSessionToken({
       proof: await loginToProof(issuer),
       deviceToken: other.token,
     });
@@ -319,7 +322,7 @@ describe('new-device check', () => {
     const { issuer } = build();
     const sessionToken = tokenService.sign({ userId: 'user-42' });
 
-    const result = issuer.issueSessionToken({
+    const result = await issuer.issueSessionToken({
       proof: await loginToProof(issuer),
       deviceToken: sessionToken,
     });
@@ -335,7 +338,7 @@ describe('new-device check', () => {
       },
     });
 
-    expect(() => issuer.issueSessionToken({ proof: null })).toThrow();
+    await expect(issuer.issueSessionToken({ proof: null })).rejects.toThrow();
     await expect(
       loginToProof(issuer).then((proof) => issuer.issueSessionToken({ proof }))
     ).rejects.toThrow(/audit log unavailable/);
@@ -354,7 +357,7 @@ describe('new-device check', () => {
       },
     });
 
-    issuer.issueSessionToken({ proof: await loginToProof(issuer) });
+    await issuer.issueSessionToken({ proof: await loginToProof(issuer) });
     expect(calls).toEqual(['recorded', 'signed']);
   });
 });

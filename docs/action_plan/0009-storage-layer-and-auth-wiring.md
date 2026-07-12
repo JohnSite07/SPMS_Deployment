@@ -4,7 +4,7 @@ Replaces the fail-loud port stubs with real MySQL-backed adapters and the two au
 
 | | |
 | --- | --- |
-| **Status** | Draft |
+| **Status** | In Progress |
 | **Date** | 2026-07-10 |
 | **Author** | htuazon (with Claude) |
 
