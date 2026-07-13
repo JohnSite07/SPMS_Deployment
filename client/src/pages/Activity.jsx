@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Container, Table, Button, Spinner, Alert } from 'react-bootstrap';
+import { Container, ListGroup, Button, Spinner, Alert, Badge, Card } from 'react-bootstrap';
 import { getAuditLog } from '../services/audit';
 
 export default function Activity() {
@@ -72,58 +72,57 @@ export default function Activity() {
       <h2>Activity</h2>
       <p className="text-muted">A complete record of your account activity.</p>
       
-      {error && <Alert variant="danger">{error}</Alert>}
+      {error && <Alert variant="danger" className="mt-3">{error}</Alert>}
       
       {loading ? (
         <div className="text-center py-5">
-          <Spinner animation="border" role="status">
+          <Spinner animation="border" variant="primary" role="status">
             <span className="visually-hidden">Loading...</span>
           </Spinner>
         </div>
       ) : (
         <>
-          <Table responsive striped bordered hover className="mt-3">
-            <thead>
-              <tr>
-                <th>Date & Time</th>
-                <th>Action</th>
-                <th>IP Address</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Card className="shadow-sm border-0 mt-4 mb-4">
+            <ListGroup variant="flush" className="rounded">
               {entries.length === 0 ? (
-                <tr>
-                  <td colSpan="3" className="text-center py-4 text-muted">
-                    No activity records found.
-                  </td>
-                </tr>
+                <ListGroup.Item className="text-center py-4 text-muted border-0">
+                  No activity records found.
+                </ListGroup.Item>
               ) : (
                 entries.map((entry) => (
-                  <tr key={entry.entryId}>
-                    <td>{new Date(entry.timestamp).toLocaleString()}</td>
-                    <td>{formatAction(entry.action)}</td>
-                    <td className="text-monospace text-muted">{entry.ipAddress || 'System'}</td>
-                  </tr>
+                  <ListGroup.Item key={entry.entryId} className="d-flex justify-content-between align-items-start py-3 border-bottom">
+                    <div className="ms-2 me-auto">
+                      <div className="fw-bold text-dark mb-1">{formatAction(entry.action)}</div>
+                      <div className="text-muted small">
+                        {new Date(entry.timestamp).toLocaleString()}
+                      </div>
+                    </div>
+                    <Badge bg="light" text="secondary" className="border fw-normal mt-1 px-2 py-1">
+                      {entry.ipAddress || 'System'}
+                    </Badge>
+                  </ListGroup.Item>
                 ))
               )}
-            </tbody>
-          </Table>
+            </ListGroup>
+          </Card>
 
-          <div className="d-flex justify-content-between align-items-center mt-3">
+          <div className="d-flex justify-content-between align-items-center mt-4">
             <Button 
-              variant="outline-secondary" 
+              variant="outline-primary" 
               onClick={handlePrevious} 
               disabled={cursorHistory.length === 0}
+              className="px-4 rounded-pill"
             >
               &larr; Previous
             </Button>
-            <span className="text-muted text-sm">
+            <span className="text-muted small fw-medium">
               Page {cursorHistory.length + 1}
             </span>
             <Button 
-              variant="outline-secondary" 
+              variant="outline-primary" 
               onClick={handleNext} 
               disabled={!nextCursor}
+              className="px-4 rounded-pill"
             >
               Next &rarr;
             </Button>

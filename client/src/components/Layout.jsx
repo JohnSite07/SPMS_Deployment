@@ -1,28 +1,57 @@
-import { Link, Outlet } from 'react-router-dom';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { Navbar, Container, Nav } from 'react-bootstrap';
 
-// Minimal app shell: a nav that exercises the router, plus the outlet where
-// the matched page renders. Plain semantic HTML — no design system yet.
+// App shell with SecureVault design: top primary header, and bottom navigation.
 export default function Layout() {
+  const location = useLocation();
+
+  // Simple helper to extract the page title for the header
+  const getPageTitle = () => {
+    const path = location.pathname;
+    if (path.startsWith('/credentials')) return 'Add Credential';
+    if (path.startsWith('/documents')) return 'Secure Documents';
+    if (path.startsWith('/health')) return 'Password Health';
+    if (path.startsWith('/activity')) return 'Audit Log';
+    if (path.startsWith('/login')) return 'Login';
+    return 'Vault Dashboard';
+  };
+
   return (
-    <div>
-      <header>
-        <h1>SecureVault</h1>
-        <nav>
-          <Link to="/">Dashboard</Link>
-          {' | '}
-          <Link to="/credentials">Credentials</Link>
-          {' | '}
-          <Link to="/documents">Documents</Link>
-          <Link to="/health">Password Health</Link>
-          {' | '}
-          <Link to="/activity">Activity</Link>
-          {' | '}
-          <Link to="/login">Log In</Link>
-        </nav>
-      </header>
-      <main>
+    <div className="d-flex flex-column vh-100 bg-light">
+      {/* Top Header */}
+      <Navbar bg="primary" variant="dark" className="flex-shrink-0 shadow-sm">
+        <Container>
+          <Navbar.Brand className="fw-bold">SecureVault</Navbar.Brand>
+          <Navbar.Text className="text-white opacity-75 small">
+            {getPageTitle()}
+          </Navbar.Text>
+        </Container>
+      </Navbar>
+
+      {/* Main Content Area */}
+      <main className="flex-grow-1 overflow-auto pb-5 mb-5">
         <Outlet />
       </main>
+
+      {/* Bottom Navigation */}
+      <Navbar fixed="bottom" bg="white" className="border-top shadow-sm flex-shrink-0 p-0">
+        <Container fluid className="p-0">
+          <Nav className="w-100 justify-content-around text-center" style={{ fontSize: '0.85rem' }}>
+            <Nav.Link as={NavLink} to="/" end className="py-3 text-secondary flex-grow-1 border-end">
+              Vault
+            </Nav.Link>
+            <Nav.Link as={NavLink} to="/documents" className="py-3 text-secondary flex-grow-1 border-end">
+              Documents
+            </Nav.Link>
+            <Nav.Link as={NavLink} to="/health" className="py-3 text-secondary flex-grow-1 border-end">
+              Health
+            </Nav.Link>
+            <Nav.Link as={NavLink} to="/activity" className="py-3 text-secondary flex-grow-1">
+              Activity
+            </Nav.Link>
+          </Nav>
+        </Container>
+      </Navbar>
     </div>
   );
 }
