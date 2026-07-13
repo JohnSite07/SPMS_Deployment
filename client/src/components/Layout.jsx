@@ -13,8 +13,9 @@ export default function Layout() {
           <Link to="/credentials">Credentials</Link>
           {' | '}
           <Link to="/documents">Documents</Link>
-          {' | '}
           <Link to="/health">Password Health</Link>
+          {' | '}
+          <Link to="/activity">Activity</Link>
           {' | '}
           <Link to="/login">Log In</Link>
         </nav>

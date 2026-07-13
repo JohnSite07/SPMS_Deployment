@@ -6,6 +6,7 @@ import Login from './pages/Login.jsx';
 import Credentials from './pages/Credentials.jsx';
 import Documents from './pages/Documents.jsx';
 import PasswordHealth from './pages/PasswordHealth.jsx';
+import Activity from './pages/Activity.jsx';
 import NotFound from './pages/NotFound.jsx';
 import { setRedirectHandler } from './services/session.js';
 
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="credentials" element={<Credentials />} />
         <Route path="documents" element={<Documents />} />
         <Route path="health" element={<PasswordHealth />} />
+        <Route path="activity" element={<Activity />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
