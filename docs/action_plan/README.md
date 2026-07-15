@@ -23,6 +23,7 @@ A PRD must be **Approved** by the user before execution starts. Once executed, i
 | [0013](0013-design-system-baseline.md) | Design System Baseline (react-bootstrap + SASS theme) | Done |
 | [0014](0014-database-schema-implementation.md) | Database Schema Capture & Reconciliation Migration (ALTER existing tables + grants) | Draft (awaiting approval) |
 | [0015](0015-password-reset-flow.md) | Password Reset Flow (forgot-password request + reset confirm, re-hash only) | Draft (awaiting approval) |
+| [0016](0016-smtp-provisioning-for-password-reset.md) | SMTP Provisioning for Password-Reset Email (DevOps hand-off) | Draft (awaiting DevOps) |
 
 Execution order: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 (0002 and 0003 are independent of each other; the rest are sequential). Each PRD is executed only after user approval, and each ends with an infra-reviewer pass and its documentation deliverables.
 
