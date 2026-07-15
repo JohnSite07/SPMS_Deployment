@@ -49,6 +49,17 @@ function createSessionsPort({
       await conn.execute('DELETE FROM SESSIONS WHERE session_id = ?', [sessionId]);
     },
 
+    // PRD 0015 (password reset): a successful reset must kick every live
+    // session, not just the one the reset was performed from — a thief
+    // mid-session is logged out the moment the owner regains control. A
+    // DELETE by user_id, same reasoning as revoke()'s DELETE by session_id:
+    // the row and the session are the same thing, so removing it is what
+    // makes isRevoked() answer true for all of them.
+    async revokeAllForUser(tx, { userId }) {
+      const conn = tx ?? pool;
+      await conn.execute('DELETE FROM SESSIONS WHERE user_id = ?', [userId]);
+    },
+
     // Fail closed: absent OR expired both answer `true`. A row that was never
     // started (rolled back with its transaction), was explicitly revoked, or
     // simply outlived its cap is treated identically to "revoked" — there is

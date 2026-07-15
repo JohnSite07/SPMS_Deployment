@@ -95,6 +95,18 @@ function createUsersPort({ pool = getPool() } = {}) {
         [userId]
       );
     },
+
+    // PRD 0015 (password reset). Takes `tx` — unlike the methods above — so
+    // the hash update can commit inside the same transaction as the reset
+    // token being consumed and the MASTER_PASSWORD_CHANGED audit entry: if
+    // the entry fails to write, this update must roll back with it.
+    async updateMasterPasswordHash(tx, { userId, hash }) {
+      const conn = tx ?? pool;
+      await conn.execute('UPDATE USERS SET master_password_hash = ? WHERE user_id = ?', [
+        hash,
+        userId,
+      ]);
+    },
   };
 }
 

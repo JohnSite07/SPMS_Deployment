@@ -16,6 +16,7 @@ function snapshot(state) {
     sessions: new Map([...state.sessions].map(([k, v]) => [k, { ...v }])),
     revoked: new Set(state.revoked),
     users: new Map([...state.users].map(([k, v]) => [k, { ...v }])),
+    resetTokens: new Map([...state.resetTokens].map(([k, v]) => [k, { ...v }])),
   };
 }
 
@@ -32,6 +33,9 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     sessions: new Map(knownSessions.map((id) => [id, { sessionId: id, userId: 'user-42' }])),
     revoked: new Set(),
     users: new Map(users.map((u) => [u.userId, { failedAttempts: 0, isLocked: false, ...u }])),
+    // Keyed by the token hash's hex encoding — same shape as the real
+    // store's VARBINARY unique index, just addressed in memory.
+    resetTokens: new Map(),
   };
 
   const appendContexts = [];
@@ -109,6 +113,18 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     async revoke(tx, sessionId) {
       state.revoked.add(sessionId);
     },
+    // PRD 0015: every session belonging to userId, revoked at once — the
+    // real port's DELETE FROM SESSIONS WHERE user_id = ?, mirrored here as
+    // "mark every matching session id revoked" rather than removing them
+    // from the map, so isRevoked() below still has a row to answer "true"
+    // about (matches revoke()'s own approach for a single session).
+    async revokeAllForUser(tx, { userId }) {
+      for (const [sessionId, session] of state.sessions) {
+        if (session.userId === userId) {
+          state.revoked.add(sessionId);
+        }
+      }
+    },
     // Fail closed. A session the store has never heard of is treated as
     // revoked, not as fine: a token naming a session whose row was rolled
     // back would otherwise be honoured until its own expiry, and revocation
@@ -134,6 +150,39 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     },
     async resetFailedAttempts(userId) {
       state.users.get(userId).failedAttempts = 0;
+    },
+    // PRD 0015. `hash` replaces whatever the fixture seeded, so a login
+    // attempted afterward with the old master password fails and one with
+    // the new password succeeds — exactly what the route's contract claims.
+    async updateMasterPasswordHash(tx, { userId, hash }) {
+      const user = state.users.get(userId);
+      if (user) {
+        user.masterPasswordHash = hash;
+      }
+    },
+  };
+
+  const resetTokenKey = (tokenHash) =>
+    Buffer.isBuffer(tokenHash) ? tokenHash.toString('hex') : String(tokenHash);
+
+  const resetTokens = {
+    transaction,
+    async create(tx, { userId, tokenHash, expiresAt }) {
+      state.resetTokens.set(resetTokenKey(tokenHash), {
+        userId,
+        expiresAt,
+        usedAt: null,
+      });
+    },
+    // Mirrors the real store's single-use guarantee: a row is only ever
+    // consumed once, and a missing/expired/already-used row all answer null.
+    async consume(tx, { tokenHash }) {
+      const row = state.resetTokens.get(resetTokenKey(tokenHash));
+      if (!row || row.usedAt || row.expiresAt.getTime() <= Date.now()) {
+        return null;
+      }
+      row.usedAt = new Date();
+      return { userId: row.userId };
     },
   };
 
@@ -181,6 +230,7 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     sessions,
     users: users_,
     auditReader,
+    resetTokens,
     // Convenience for assertions.
     actions: () => state.entries.map((e) => e.action),
     entriesFor: (userId) => state.entries.filter((e) => e.userId === userId),

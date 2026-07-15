@@ -3,6 +3,8 @@ import { Routes, Route, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Login from './pages/Login.jsx';
+import ForgotPassword from './pages/ForgotPassword.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
 import Credentials from './pages/Credentials.jsx';
 import Documents from './pages/Documents.jsx';
 import PasswordHealth from './pages/PasswordHealth.jsx';
@@ -28,6 +30,8 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="login" element={<Login />} />
+        <Route path="forgot-password" element={<ForgotPassword />} />
+        <Route path="reset-password" element={<ResetPassword />} />
         <Route path="credentials" element={<Credentials />} />
         <Route path="documents" element={<Documents />} />
         <Route path="health" element={<PasswordHealth />} />

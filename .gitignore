@@ -12,6 +12,11 @@ npm-debug.log*
 .env.*
 *.env
 
+# Jira / Atlassian API tokens — local credentials, never commit
+Jira/
+*API_Tokens*
+*api_token*
+
 # Terraform — state, local caches, and variable files that may hold real values
 # (.terraform.lock.hcl IS committed; do not ignore it)
 .terraform/
