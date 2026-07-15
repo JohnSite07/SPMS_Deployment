@@ -27,13 +27,16 @@ export default function Layout() {
               {getPageTitle()}
             </Navbar.Text>
             {/* Header entry point to the Login screen (wireframe Fig 9 places
-                "Login" top-right). Lightweight for now: a persistent link so
-                /login is reachable from the UI. Full auth-gating (redirect
-                unauthenticated users here, show Logout when signed in) is a
-                follow-up once the DB migration makes login work end-to-end. */}
-            <Nav.Link as={NavLink} to="/login" className="text-white fw-semibold">
-              Login
-            </Nav.Link>
+                "Login" top-right). Hidden on the login page itself, where the
+                page-title text above already reads "Login" — showing both
+                produced a duplicate. Lightweight for now: full auth-gating
+                (redirect unauthenticated users here, show Logout when signed
+                in) is a follow-up once the DB migration makes login work. */}
+            {!location.pathname.startsWith('/login') && (
+              <Nav.Link as={NavLink} to="/login" className="text-white fw-semibold">
+                Login
+              </Nav.Link>
+            )}
           </Nav>
         </Container>
       </Navbar>
