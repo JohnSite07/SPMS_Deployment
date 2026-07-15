@@ -22,9 +22,19 @@ export default function Layout() {
       <Navbar bg="primary" variant="dark" className="flex-shrink-0 shadow-sm">
         <Container>
           <Navbar.Brand className="fw-bold">SecureVault</Navbar.Brand>
-          <Navbar.Text className="text-white opacity-75 small">
-            {getPageTitle()}
-          </Navbar.Text>
+          <Nav className="align-items-center">
+            <Navbar.Text className="text-white opacity-75 small me-3">
+              {getPageTitle()}
+            </Navbar.Text>
+            {/* Header entry point to the Login screen (wireframe Fig 9 places
+                "Login" top-right). Lightweight for now: a persistent link so
+                /login is reachable from the UI. Full auth-gating (redirect
+                unauthenticated users here, show Logout when signed in) is a
+                follow-up once the DB migration makes login work end-to-end. */}
+            <Nav.Link as={NavLink} to="/login" className="text-white fw-semibold">
+              Login
+            </Nav.Link>
+          </Nav>
         </Container>
       </Navbar>
 
