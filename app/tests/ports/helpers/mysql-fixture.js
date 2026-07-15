@@ -3,6 +3,7 @@ const { createUsersPort } = require('../../../src/ports/users');
 const { createSessionsPort } = require('../../../src/ports/sessions');
 const { createCredentialsPort } = require('../../../src/ports/credentials');
 const { createAuditReaderPort, createAuditAppend } = require('../../../src/ports/audit-reader');
+const { createPasswordResetStore } = require('../../../src/ports/password-reset-store');
 
 // The real half of the port contract. Only ever constructed when DB_HOST is
 // set (see mysql.contract.test.js) — requiring this file is safe with no DB
@@ -22,6 +23,7 @@ async function buildMysqlFixture() {
   const credentials = createCredentialsPort({ pool });
   const auditReader = createAuditReaderPort({ pool });
   const append = createAuditAppend({ pool });
+  const resetTokens = createPasswordResetStore({ pool });
 
   const createdUserIds = [];
 
@@ -60,12 +62,13 @@ async function buildMysqlFixture() {
       'DELETE FROM AUDIT_ENTRIES WHERE user_id IN (?) OR target_user_id IN (?) OR actor_user_id IN (?)',
       [createdUserIds, createdUserIds, createdUserIds]
     );
-    // VAULTS/VAULT_ITEMS/CREDENTIALS/SESSIONS all cascade off USERS.
+    // VAULTS/VAULT_ITEMS/CREDENTIALS/SESSIONS/PASSWORD_RESET_TOKENS all
+    // cascade off USERS (0015's FK_PRT_USERS is ON DELETE CASCADE).
     await pool.query('DELETE FROM USERS WHERE user_id IN (?)', [createdUserIds]);
     createdUserIds.length = 0;
   }
 
-  return { users, sessions, credentials, auditReader, append, seedUser, cleanup };
+  return { users, sessions, credentials, auditReader, append, resetTokens, seedUser, cleanup };
 }
 
 module.exports = { buildMysqlFixture };

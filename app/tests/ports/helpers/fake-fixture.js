@@ -26,6 +26,7 @@ function buildFakeFixture() {
     credentials: db.credentials,
     auditReader: db.auditReader,
     append: db.append,
+    resetTokens: db.resetTokens,
     seedUser,
     async cleanup() {},
   };

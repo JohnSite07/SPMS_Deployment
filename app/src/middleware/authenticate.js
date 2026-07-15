@@ -18,7 +18,17 @@ const { createTokenService } = require('../services/token-service');
 // session and must prove it owns the session it is ending. Listing the bare
 // path would have made logout unauthenticated, letting anyone end anyone's
 // session by guessing nothing at all.
-const PUBLIC_PATHS = Object.freeze(['/health', 'POST /api/session']);
+// The password-reset pair is public for the same reason login is: a user who
+// forgot their master password by definition holds no session token, and
+// /request is the request that would otherwise need one to explain who it's
+// for. Both are POST-scoped, not bare paths, for the same reason logout
+// isn't bare: there is no GET/DELETE on this router to accidentally expose.
+const PUBLIC_PATHS = Object.freeze([
+  '/health',
+  'POST /api/session',
+  'POST /api/password-reset/request',
+  'POST /api/password-reset/confirm',
+]);
 
 const METHOD_SCOPED_ENTRY = /^([A-Z]+)\s+(\/.*)$/;
 
