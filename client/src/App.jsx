@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
+import PublicLayout from './components/PublicLayout.jsx';
+import RequireAuth from './components/RequireAuth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Login from './pages/Login.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
@@ -14,7 +16,13 @@ import { setRedirectHandler } from './services/session.js';
 
 // Route table for the core use-case screens (docs/requirements/
 // functional-requirements.md UC-01..UC-05) plus a 404 catch-all.
-// Pages are inert placeholders — behaviour is added in later PRDs.
+//
+// Two groups, mirroring Figure 7's navigation map: the pre-session screens
+// (login, forgot/reset) render under PublicLayout — a bare shell with no app
+// chrome — while every vault screen sits behind RequireAuth and the tabbed
+// Layout. The guard is what makes login actually gate the app: without a live
+// session, a protected URL redirects to /login. Vault screens themselves are
+// still inert placeholders — their behaviour is added in later PRDs.
 export default function App() {
   // Give the API client a way to send an expired/ended session back to login
   // (PRD 0012). Registered here because navigate() is only available inside
@@ -27,17 +35,29 @@ export default function App() {
 
   return (
     <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Dashboard />} />
+      {/* Public: reachable without a session, no bottom-nav / logout chrome. */}
+      <Route element={<PublicLayout />}>
         <Route path="login" element={<Login />} />
         <Route path="forgot-password" element={<ForgotPassword />} />
         <Route path="reset-password" element={<ResetPassword />} />
+      </Route>
+
+      {/* Protected: the Vault Dashboard hub and its spokes, all auth-gated. */}
+      <Route
+        element={
+          <RequireAuth>
+            <Layout />
+          </RequireAuth>
+        }
+      >
+        <Route index element={<Dashboard />} />
         <Route path="credentials" element={<Credentials />} />
         <Route path="documents" element={<Documents />} />
         <Route path="health" element={<PasswordHealth />} />
         <Route path="activity" element={<Activity />} />
-        <Route path="*" element={<NotFound />} />
       </Route>
+
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
