@@ -1,20 +1,35 @@
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Navbar, Container, Nav } from 'react-bootstrap';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Navbar, Container, Nav, Button } from 'react-bootstrap';
+import { logout } from '../services/auth-service';
+import AutoLockCountdown from './AutoLockCountdown.jsx';
 
-// App shell with SecureVault design: top primary header, and bottom navigation.
+// App shell for the authenticated screens: top header (brand, auto-lock
+// countdown, logout) and the persistent bottom navigation. This layout is only
+// ever rendered behind RequireAuth, so the tabs and the logout control are
+// never shown to a logged-out visitor — the login/reset screens use
+// PublicLayout instead. This replaces the earlier header "Login" link, which
+// was a stopgap until auth-gating landed (the follow-up its own comment named).
 export default function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // Simple helper to extract the page title for the header
+  // Simple helper to extract the page title for the header.
   const getPageTitle = () => {
     const path = location.pathname;
     if (path.startsWith('/credentials')) return 'Add Credential';
     if (path.startsWith('/documents')) return 'Secure Documents';
     if (path.startsWith('/health')) return 'Password Health';
     if (path.startsWith('/activity')) return 'Audit Log';
-    if (path.startsWith('/login')) return 'Login';
     return 'Vault Dashboard';
   };
+
+  // Figure 7's `logout -> Login` edge. logout() clears the in-memory token
+  // (best-effort server revoke) regardless of the network result, so the
+  // redirect always lands on the login screen with no live session.
+  async function handleLogout() {
+    await logout();
+    navigate('/login');
+  }
 
   return (
     <div className="d-flex flex-column vh-100 bg-light">
@@ -22,22 +37,15 @@ export default function Layout() {
       <Navbar bg="primary" variant="dark" className="flex-shrink-0 shadow-sm">
         <Container>
           <Navbar.Brand className="fw-bold">SecureVault</Navbar.Brand>
-          <Nav className="align-items-center">
-            <Navbar.Text className="text-white opacity-75 small me-3">
+          <div className="d-flex align-items-center gap-3">
+            <AutoLockCountdown />
+            <Navbar.Text className="text-white opacity-75 small d-none d-sm-inline">
               {getPageTitle()}
             </Navbar.Text>
-            {/* Header entry point to the Login screen (wireframe Fig 9 places
-                "Login" top-right). Hidden on the login page itself, where the
-                page-title text above already reads "Login" — showing both
-                produced a duplicate. Lightweight for now: full auth-gating
-                (redirect unauthenticated users here, show Logout when signed
-                in) is a follow-up once the DB migration makes login work. */}
-            {!location.pathname.startsWith('/login') && (
-              <Nav.Link as={NavLink} to="/login" className="text-white fw-semibold">
-                Login
-              </Nav.Link>
-            )}
-          </Nav>
+            <Button variant="outline-light" size="sm" onClick={handleLogout}>
+              Log out
+            </Button>
+          </div>
         </Container>
       </Navbar>
 
