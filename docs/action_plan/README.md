@@ -28,6 +28,8 @@ A PRD must be **Approved** by the user before execution starts. Once executed, i
 | [0018](0018-welcome-and-registration.md) | Welcome/Landing Page & Self-Service Account Registration | Done |
 | [0019](0019-credential-vault-ui-and-encryption.md) | Credential Vault: Client-Side Encryption + List/Add/View/Edit/Delete UI | Done |
 | [0020](0020-totp-based-password-reset.md) | TOTP-Based Password Reset (replaces the email-link flow) | Done |
+| [0021](0021-password-generator.md) | Password Generator | Done |
+| [0022](0022-password-health-and-dashboard.md) | Password Health Analysis (UC-05) + Vault Dashboard Redesign | Done |
 
 Execution order: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 (0002 and 0003 are independent of each other; the rest are sequential). Each PRD is executed only after user approval, and each ends with an infra-reviewer pass and its documentation deliverables.
 

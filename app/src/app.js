@@ -10,6 +10,7 @@ const { createAuditRoutes } = require('./routes/audit');
 const { createAdminAuditRoutes } = require('./routes/admin-audit');
 const { createPasswordResetRoutes } = require('./routes/password-reset');
 const { createTwoFactorRoutes } = require('./routes/two-factor');
+const { createPasswordHealthRoutes } = require('./routes/password-health');
 
 // App factory, separated from server.js so tests can mount it without binding
 // a port. Every collaborator is injected: this module wires ports together
@@ -27,6 +28,8 @@ const { createTwoFactorRoutes } = require('./routes/two-factor');
  * @param sessions      session port; also supplies isRevoked() to the auth
  *                      middleware, which is what makes logout mean something.
  * @param credentials   credential port (see routes/credentials.js).
+ * @param passwordHealth  password-health port (see routes/password-health.js
+ *                      and ports/password-health.js) — PRD 0022 / UC-05.
  * @param auditReader   audit read port (see routes/audit.js). Separate from
  *                      `audit` on purpose: one object can append and cannot
  *                      read, the other can read and cannot append. Neither
@@ -44,6 +47,7 @@ function createApp({
   vaults,
   sessions,
   credentials,
+  passwordHealth,
   auditReader,
   hashPassword,
 } = {}) {
@@ -130,6 +134,14 @@ function createApp({
   app.use('/api/2fa', createTwoFactorRoutes({ users, issuer, audit, sessions }));
 
   app.use('/api/credentials', createCredentialRoutes({ store: credentials, audit }));
+
+  // Authenticated only -- no PUBLIC_PATHS entry, default-deny already covers
+  // it (there is no pre-session step here the way login/register/2FA
+  // enrollment need one). PRD 0022 / UC-05.
+  app.use(
+    '/api/password-health',
+    createPasswordHealthRoutes({ store: passwordHealth, audit })
+  );
 
   // Public too (PUBLIC_PATHS): a forgotten master password is by definition
   // a request made with no session. Re-hash only — see routes/

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { ItemOwnershipError } = require('../../src/ports/password-health');
 
 // One in-memory database behind every port, because that is how the real one
 // is shaped: a single MySQL instance whose transactions span the credential
@@ -18,6 +19,15 @@ function snapshot(state) {
     users: new Map([...state.users].map(([k, v]) => [k, { ...v }])),
     resetTokens: new Map([...state.resetTokens].map(([k, v]) => [k, { ...v }])),
     vaults: new Map([...state.vaults].map(([k, v]) => [k, { ...v }])),
+    // PRD 0022: keyed by reportId, mirroring PASSWORD_HEALTH_REPORTS
+    // (report_id PK) / REPORT_FINDINGS (composite PK, folded onto the report
+    // row here as `findings`, same simplification `credentials` above makes
+    // by keeping ciphertext inline rather than a second joined table).
+    healthReports: new Map([...state.healthReports].map(([k, v]) => [k, { ...v, findings: [...v.findings] }])),
+    // SECURITY_ALERTS -- a flat array, same shape as `entries` above (an
+    // append-only-feeling list keyed by nothing but insertion order plus its
+    // own alertId).
+    securityAlerts: state.securityAlerts.map((a) => ({ ...a })),
   };
 }
 
@@ -48,6 +58,9 @@ function createFakeDatabase({
     // PRD 0018: keyed by userId, same 1:1 shape as the real VAULTS table
     // (UQ_VAULTS_USER).
     vaults: new Map(),
+    // PRD 0022 (UC-05). See snapshot()'s comment above for the shape.
+    healthReports: new Map(),
+    securityAlerts: [],
   };
 
   const appendContexts = [];
@@ -299,6 +312,77 @@ function createFakeDatabase({
     },
   };
 
+  // PRD 0022 (UC-05). `vaultId` is simply `userId` in this fake -- the real
+  // schema is 1:1 (VAULTS/UQ_VAULTS_USER) and this store, like `credentials`
+  // above, already keys ownership on userId directly rather than modeling a
+  // separate vault row, so there is nothing a distinct vaultId would buy here
+  // that userId doesn't already give. Business rule 6 is still enforced: the
+  // fake throws the *same* ItemOwnershipError class the real port does, so
+  // routes/password-health.js's `err instanceof ItemOwnershipError` check
+  // behaves identically over the fake and the real store.
+  const passwordHealth = {
+    transaction,
+    async getVaultIdForUser(userId) {
+      return userId;
+    },
+    async createReport(tx, { vaultId, overallScore }) {
+      const reportId = crypto.randomUUID();
+      state.healthReports.set(reportId, {
+        reportId,
+        vaultId,
+        overallScore,
+        generatedAt: new Date(),
+        findings: [],
+      });
+      return reportId;
+    },
+    async addFindings(tx, { vaultId, reportId, findings }) {
+      const notOwned = findings
+        .map((f) => f.itemId)
+        .filter((itemId) => {
+          const credential = state.credentials.get(itemId);
+          return !credential || credential.userId !== vaultId;
+        });
+      if (notOwned.length > 0) {
+        throw new ItemOwnershipError(notOwned);
+      }
+      const report = state.healthReports.get(reportId);
+      report.findings = findings.map((f) => ({ itemId: f.itemId, status: f.status }));
+    },
+    async addAlerts(tx, { reportId, alerts }) {
+      for (const alert of alerts) {
+        state.securityAlerts.push({
+          alertId: crypto.randomUUID(),
+          reportId,
+          type: alert.type,
+          message: alert.message,
+          isRead: false,
+          createdAt: new Date(),
+        });
+      }
+    },
+    async getLatestReport({ vaultId }) {
+      const reports = [...state.healthReports.values()]
+        .filter((r) => r.vaultId === vaultId)
+        .sort((a, b) => b.generatedAt.getTime() - a.generatedAt.getTime());
+      const report = reports[0];
+      if (!report) {
+        return null;
+      }
+      const alerts = state.securityAlerts.filter(
+        (a) => a.reportId === report.reportId && !a.isRead
+      );
+      return {
+        reportId: report.reportId,
+        vaultId: report.vaultId,
+        overallScore: report.overallScore,
+        generatedAt: report.generatedAt,
+        findings: report.findings.map((f) => ({ ...f })),
+        alerts: alerts.map((a) => ({ ...a })),
+      };
+    },
+  };
+
   return {
     state,
     append,
@@ -307,6 +391,7 @@ function createFakeDatabase({
     sessions,
     users: users_,
     vaults,
+    passwordHealth,
     auditReader,
     resetTokens,
     // Convenience for assertions.

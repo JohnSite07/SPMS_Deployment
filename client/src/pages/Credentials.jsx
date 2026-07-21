@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Container, Form, Button, Alert, Spinner, InputGroup, Modal, Table } from 'react-bootstrap';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Container, Form, Button, Alert, Spinner, InputGroup, Modal, Table, ProgressBar } from 'react-bootstrap';
 import {
   listCredentials,
   getCredential,
@@ -9,6 +10,10 @@ import {
 } from '../services/credentials-service';
 import { encryptField, decryptField } from '../services/vault-crypto';
 import * as vaultKeyStore from '../services/vault-key-store';
+import { generatePassword } from '../services/password-generator';
+import { scorePasswordStrength } from '../utils/password-strength';
+import { analyzeVault } from '../services/vault-health-analyzer';
+import { submitHealthReport } from '../services/password-health-service';
 
 // UC-02 (add) / UC-03 (view/retrieve) Credential Vault — PRD 0019's full
 // build, replacing the one-line placeholder. This is the first screen that
@@ -23,12 +28,50 @@ import * as vaultKeyStore from '../services/vault-key-store';
 // only `encryptedPassword` is ciphertext (see routes/credentials.js's
 // MUTABLE_FIELDS and its header comment). The vault key is only ever needed
 // to encrypt a new/changed password, or decrypt an existing one on reveal.
+//
+// PRD 0022 (UC-05) folds the "Vault Dashboard" wireframe into this screen and
+// adds per-row health badges: after the list loads (and after any add/edit/
+// delete that changes a password value), every item's password is decrypted
+// transiently, in memory, purely to run vault-health-analyzer.js's
+// analyzeVault() and POST the result via password-health-service.js. That
+// decrypted plaintext is never rendered, logged, or kept beyond this
+// computation — the masked-by-default View/Edit behaviour PRD 0019 built is
+// unchanged. Health analysis is best-effort UI polish, not core CRUD: a
+// decrypt or submit failure in that path is swallowed rather than surfacing
+// as a user-facing error or blocking the list.
 
 const CLIPBOARD_CLEAR_MS = 30000; // matches TwoFactorSetup.jsx's precedent.
 const DECRYPT_FAILURE_MESSAGE = 'Unable to decrypt this password.';
 const GENERIC_LOAD_ERROR = 'Unable to load your vault. Please try again.';
 const GENERIC_SAVE_ERROR = 'Unable to save this credential. Please try again.';
 const GENERIC_DELETE_ERROR = 'Unable to delete this credential. Please try again.';
+
+// PRD 0021 — maps the soft strength label from password-strength.js to a
+// react-bootstrap variant (theme token, never a hardcoded hex) for the live
+// meter shown under the Add/Edit password fields.
+function strengthVariant(label) {
+  if (label === 'Strong') {
+    return 'success';
+  }
+  if (label === 'Fair') {
+    return 'warning';
+  }
+  return 'danger';
+}
+
+// PRD 0022 — maps a per-item health finding to a Bootstrap contextual
+// background utility (theme token, never a hardcoded hex), matching the
+// wireframe's reused/weak row tinting. No finding (or an 'OK' finding) keeps
+// the row untinted.
+function rowVariantClass(status) {
+  if (status === 'REUSED') {
+    return 'bg-danger-subtle';
+  }
+  if (status === 'WEAK') {
+    return 'bg-warning-subtle';
+  }
+  return '';
+}
 
 function matchesFilter(item, query) {
   if (!query) {
@@ -48,10 +91,61 @@ export default function Credentials() {
   // move is to send the user back through login, not guess or fall back.
   const [hasKey] = useState(() => vaultKeyStore.hasVaultKey());
 
+  // PRD 0022 — PasswordHealth.jsx's "Fix now" links deep-link back here via
+  // router state (`{ openItemId }`), the same mechanism React Router already
+  // offers and nothing this screen had to invent. Consumed once the list has
+  // loaded, then cleared so a later back-navigation or refresh doesn't
+  // reopen the same item.
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [items, setItems] = useState([]);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState(null);
   const [filterText, setFilterText] = useState('');
+
+  // PRD 0022 — itemId -> 'WEAK' | 'REUSED' | 'OK', driving each row's
+  // background tint. Absent entries (including the empty-vault case) render
+  // with no tint at all.
+  const [healthFindings, setHealthFindings] = useState({});
+
+  // Runs the client-side analyzer over the given item list (decrypting every
+  // password transiently, in memory, purely to compute badges) and persists
+  // the result. Best-effort: a decrypt or network failure here must never
+  // block or crash the vault list, so every failure path is swallowed after
+  // logging nothing plaintext-bearing.
+  async function runHealthAnalysis(currentItems) {
+    if (!Array.isArray(currentItems) || currentItems.length === 0) {
+      setHealthFindings({});
+      return;
+    }
+    const key = vaultKeyStore.getVaultKey();
+    if (!key) {
+      return;
+    }
+    try {
+      const decrypted = await Promise.all(
+        currentItems.map(async (item) => ({
+          itemId: item.itemId,
+          password: await decryptField(key, item.encryptedPassword),
+        }))
+      );
+      const { overallScore, findings } = analyzeVault(decrypted);
+      if (overallScore === null) {
+        setHealthFindings({});
+        return;
+      }
+      const findingsByItemId = {};
+      findings.forEach((finding) => {
+        findingsByItemId[finding.itemId] = finding.status;
+      });
+      setHealthFindings(findingsByItemId);
+      await submitHealthReport({ overallScore, findings });
+    } catch {
+      // Health analysis is UI polish layered on top of the core CRUD flow —
+      // never surfaced as a user-facing error, never allowed to crash the list.
+    }
+  }
 
   useEffect(() => {
     if (!hasKey) {
@@ -62,8 +156,21 @@ export default function Credentials() {
     (async () => {
       try {
         const data = await listCredentials();
-        if (!cancelled) {
-          setItems(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        if (cancelled) {
+          return;
+        }
+        setItems(list);
+        runHealthAnalysis(list);
+
+        const openItemId = location.state?.openItemId;
+        if (openItemId) {
+          const target = list.find((it) => it.itemId === openItemId);
+          if (target) {
+            openView(target);
+          }
+          // One-shot: clear the navigation state so it isn't re-consumed.
+          navigate(location.pathname, { replace: true, state: {} });
         }
       } catch {
         if (!cancelled) {
@@ -100,6 +207,17 @@ export default function Credentials() {
     setShowAdd(true);
   }
 
+  // PRD 0021 — one-click strong password, filled straight into the same
+  // field a typed password would go into; it goes through the identical
+  // encryptField/POST flow in handleAddSubmit above, nothing about the
+  // crypto or API call changes. Revealing it after generating lets the user
+  // actually see what they're about to save (they typed nothing to check
+  // against, unlike a manually-entered password).
+  function handleGenerateAddPassword() {
+    setAddPassword(generatePassword());
+    setAddShowPassword(true);
+  }
+
   async function handleAddSubmit(event) {
     event.preventDefault();
     if (addSubmitting) {
@@ -121,8 +239,13 @@ export default function Credentials() {
         username: addUsername,
         encryptedPassword,
       });
-      setItems((prev) => [created, ...prev]);
+      const nextItems = [created, ...items];
+      setItems(nextItems);
       setShowAdd(false);
+      // A new credential always adds a new password value to the vault —
+      // re-run analysis so its badge (and any newly-created reuse pairing
+      // with an existing item) shows up immediately.
+      runHealthAnalysis(nextItems);
     } catch {
       setAddError(GENERIC_SAVE_ERROR);
     } finally {
@@ -265,6 +388,15 @@ export default function Credentials() {
     setShowEdit(true);
   }
 
+  // PRD 0021 — same guarantee as handleGenerateAddPassword: fills the "new
+  // password" field with a generated value that flows through the exact
+  // same re-encrypt-on-submit path as a typed replacement (see
+  // handleEditSubmit's `if (editNewPassword)` branch below) — unchanged.
+  function handleGenerateEditPassword() {
+    setEditNewPassword(generatePassword());
+    setEditShowNewPassword(true);
+  }
+
   async function handleRevealExisting() {
     if (!editItem) {
       return;
@@ -298,8 +430,14 @@ export default function Credentials() {
         patchFields.encryptedPassword = await encryptField(vaultKeyStore.getVaultKey(), editNewPassword);
       }
       const updated = await updateCredential(editItem.itemId, patchFields);
-      setItems((prev) => prev.map((it) => (it.itemId === updated.itemId ? updated : it)));
+      const nextItems = items.map((it) => (it.itemId === updated.itemId ? updated : it));
+      setItems(nextItems);
       setShowEdit(false);
+      // Only re-run analysis when the password itself changed — editing
+      // title/url/username alone can't change any item's WEAK/REUSED status.
+      if (editNewPassword) {
+        runHealthAnalysis(nextItems);
+      }
     } catch {
       setEditError(GENERIC_SAVE_ERROR);
     } finally {
@@ -327,8 +465,13 @@ export default function Credentials() {
     setDeleteError(null);
     try {
       await deleteCredential(deleteItem.itemId);
-      setItems((prev) => prev.filter((it) => it.itemId !== deleteItem.itemId));
+      const nextItems = items.filter((it) => it.itemId !== deleteItem.itemId);
+      setItems(nextItems);
       setShowDelete(false);
+      // Removing an item changes the vault's password set (e.g. it can
+      // resolve a reuse pairing for whichever item is left behind) — re-run
+      // analysis rather than leaving stale badges.
+      runHealthAnalysis(nextItems);
     } catch {
       setDeleteError(GENERIC_DELETE_ERROR);
     } finally {
@@ -337,6 +480,12 @@ export default function Credentials() {
   }
 
   const filteredItems = items.filter((item) => matchesFilter(item, filterText));
+
+  // PRD 0021 — live strength meters, recomputed on every render (a cheap
+  // pure function, no memoization needed) so they track the field as the
+  // user types or after a generate click.
+  const addPasswordStrength = scorePasswordStrength(addPassword);
+  const editPasswordStrength = scorePasswordStrength(editNewPassword);
 
   if (!hasKey) {
     return (
@@ -392,7 +541,7 @@ export default function Credentials() {
           </thead>
           <tbody>
             {filteredItems.map((item) => (
-              <tr key={item.itemId}>
+              <tr key={item.itemId} className={rowVariantClass(healthFindings[item.itemId])}>
                 <td>
                   <Button variant="link" className="p-0 text-decoration-none" onClick={() => openView(item)}>
                     {item.title}
@@ -478,6 +627,20 @@ export default function Credentials() {
                     {addShowPassword ? 'Hide' : 'Show'}
                   </Button>
                 </InputGroup>
+                <div className="mt-2">
+                  <Button variant="outline-secondary" size="sm" type="button" onClick={handleGenerateAddPassword}>
+                    Generate strong password
+                  </Button>
+                </div>
+                {addPassword && (
+                  <div className="mt-2" data-testid="add-password-strength">
+                    <ProgressBar
+                      now={addPasswordStrength.score}
+                      variant={strengthVariant(addPasswordStrength.label)}
+                      label={addPasswordStrength.label}
+                    />
+                  </div>
+                )}
               </Form.Group>
             </fieldset>
           </Modal.Body>
@@ -645,6 +808,20 @@ export default function Credentials() {
                   </Button>
                 </InputGroup>
                 <Form.Text className="text-muted">Leave blank to keep the current password unchanged.</Form.Text>
+                <div className="mt-2">
+                  <Button variant="outline-secondary" size="sm" type="button" onClick={handleGenerateEditPassword}>
+                    Generate strong password
+                  </Button>
+                </div>
+                {editNewPassword && (
+                  <div className="mt-2" data-testid="edit-password-strength">
+                    <ProgressBar
+                      now={editPasswordStrength.score}
+                      variant={strengthVariant(editPasswordStrength.label)}
+                      label={editPasswordStrength.label}
+                    />
+                  </div>
+                )}
               </Form.Group>
             </fieldset>
           </Modal.Body>

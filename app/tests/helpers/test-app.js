@@ -87,6 +87,7 @@ function testApp({
     vaults: db.vaults,
     sessions: sessions ?? db.sessions,
     credentials: db.credentials,
+    passwordHealth: db.passwordHealth,
     auditReader: db.auditReader,
     hashPassword: fakeHashPassword,
   });

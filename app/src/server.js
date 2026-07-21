@@ -5,6 +5,7 @@ const { createUsersPort } = require('./ports/users');
 const { createVaultsPort } = require('./ports/vaults');
 const { createSessionsPort } = require('./ports/sessions');
 const { createCredentialsPort } = require('./ports/credentials');
+const { createPasswordHealthPort } = require('./ports/password-health');
 const { createAuditReaderPort, createAuditAppend } = require('./ports/audit-reader');
 const { verifyPassword, hashPassword } = require('./services/password-hasher');
 const { verifyTwoFactorCode } = require('./services/two-factor-verifier');
@@ -32,6 +33,7 @@ const users = createUsersPort();
 const vaults = createVaultsPort();
 const sessions = createSessionsPort();
 const credentials = createCredentialsPort();
+const passwordHealth = createPasswordHealthPort();
 const auditReader = createAuditReaderPort();
 
 // Separate from `auditReader` on purpose (see app.js's own comment on this):
@@ -68,6 +70,7 @@ createApp({
   vaults,
   sessions,
   credentials,
+  passwordHealth,
   auditReader,
   audit,
   issuer,
