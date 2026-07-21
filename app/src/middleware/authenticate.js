@@ -29,6 +29,11 @@ const { createTokenService } = require('../services/token-service');
 // precondition), so /enroll and /confirm are, like login, the requests that
 // create the very thing a token would otherwise be needed to prove. See
 // PRD 0017 and routes/two-factor.js.
+//
+// Registration is public for the same shape of reason as all the above: a
+// first-time visitor holds no session by definition, and POST /api/register
+// is the request that creates the account a token would otherwise be needed
+// to prove. See PRD 0018 and routes/register.js.
 const PUBLIC_PATHS = Object.freeze([
   '/health',
   'POST /api/session',
@@ -36,6 +41,7 @@ const PUBLIC_PATHS = Object.freeze([
   'POST /api/password-reset/confirm',
   'POST /api/2fa/enroll',
   'POST /api/2fa/confirm',
+  'POST /api/register',
 ]);
 
 const METHOD_SCOPED_ENTRY = /^([A-Z]+)\s+(\/.*)$/;

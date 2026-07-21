@@ -2,27 +2,13 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Container, Card, Form, Button, Alert, Spinner, InputGroup } from 'react-bootstrap';
 import { confirmReset } from '../services/password-reset';
+import { MIN_LENGTH, passwordRuleFailures } from '../utils/password-rules';
 
 // Business rule 2 (master password ≥12 chars, mixed character types), mirrored
 // client-side so a weak/mismatched password never reaches the network — the
 // server re-enforces the same rule (PRD 0015 success criteria), this is only
-// a fast-fail for UX.
-const MIN_LENGTH = 12;
-const HAS_UPPER = /[A-Z]/;
-const HAS_LOWER = /[a-z]/;
-const HAS_NUMBER = /[0-9]/;
-const HAS_SYMBOL = /[^A-Za-z0-9]/;
-
-function passwordRuleFailures(password) {
-  const failures = [];
-  if (password.length < MIN_LENGTH) {
-    failures.push(`At least ${MIN_LENGTH} characters`);
-  }
-  if (!HAS_UPPER.test(password) || !HAS_LOWER.test(password) || !HAS_NUMBER.test(password) || !HAS_SYMBOL.test(password)) {
-    failures.push('A mix of uppercase, lowercase, numbers, and symbols');
-  }
-  return failures;
-}
+// a fast-fail for UX. The rule itself lives in utils/password-rules.js
+// (shared with SignUp.jsx, PRD 0018) so both screens enforce identically.
 
 // Generic invalid-link message used for EVERY server-side failure (unknown,
 // expired, or already-used token) and for a missing token — per PRD 0015 the

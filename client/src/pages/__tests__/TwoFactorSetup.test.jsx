@@ -20,9 +20,9 @@ vi.mock('react-router-dom', async () => {
 import { enrollTwoFactor, confirmTwoFactor } from '../../services/two-factor-service';
 import TwoFactorSetup from '../TwoFactorSetup.jsx';
 
-function renderPage() {
+function renderPage(initialEntries = ['/2fa-setup']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <TwoFactorSetup />
     </MemoryRouter>
   );
@@ -51,6 +51,18 @@ describe('TwoFactorSetup screen (PRD 0017)', () => {
     expect(screen.getByLabelText(/email/i)).toBeTruthy();
     expect(screen.getByLabelText(/master password/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /set up two-factor authentication/i })).toBeTruthy();
+  });
+
+  it('defaults the email field to empty when reached with no router state (PRD 0017 behaviour, unchanged)', () => {
+    renderPage();
+
+    expect(screen.getByLabelText(/email/i).value).toBe('');
+  });
+
+  it('pre-fills the email field from router state when handed off by SignUp.jsx (PRD 0018)', () => {
+    renderPage([{ pathname: '/2fa-setup', state: { email: 'fresh@example.com' } }]);
+
+    expect(screen.getByLabelText(/email/i).value).toBe('fresh@example.com');
   });
 
   it('advances to step 2 and shows the secret + otpauth URI after a successful enroll', async () => {

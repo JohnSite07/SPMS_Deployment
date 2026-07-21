@@ -458,7 +458,9 @@ Parameterized DML (`?` placeholders, `mysql2` style) for every table.
 
 ```sql
 -- ===== 1. USERS =============================================================
--- Register
+-- Register: PRD 0018's ports/users.js createUser(tx, { email, passwordHash })
+-- issues exactly this query, inside the same transaction as the VAULTS
+-- insert below and the ACCOUNT_CREATED audit entry.
 INSERT INTO USERS (email, master_password_hash) VALUES (?, ?);
 -- Login lookup
 SELECT user_id, email, master_password_hash, failed_attempts, is_locked, lockout_until, created_at
@@ -478,6 +480,11 @@ DELETE FROM USERS WHERE user_id = ?;
 
 -- ===== 2. VAULTS ============================================================
 INSERT INTO VAULTS (user_id, auto_lock_minutes, is_locked) VALUES (?, ?, TRUE);
+-- Register (PRD 0018): the composed Vault created alongside a new USERS row,
+-- in the same transaction. auto_lock_minutes is a literal 10 (business rule
+-- 5), not caller-supplied, and is_locked is always TRUE — a vault nobody has
+-- ever logged into starts locked (see domain-model.md's implementation notes).
+INSERT INTO VAULTS (user_id, auto_lock_minutes, is_locked) VALUES (?, 10, TRUE);
 SELECT vault_id, user_id, auto_lock_minutes, is_locked FROM VAULTS WHERE user_id = ?;
 SELECT vault_id, user_id, auto_lock_minutes, is_locked FROM VAULTS WHERE vault_id = ?;
 UPDATE VAULTS SET auto_lock_minutes = ? WHERE vault_id = ?;

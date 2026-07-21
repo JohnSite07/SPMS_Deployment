@@ -3,6 +3,7 @@ const { loadJwtConfig } = require('./config/env');
 const { loadPasswordResetConfig } = require('./config/password-reset-config');
 const { loadDbConfig } = require('./db/pool');
 const { createUsersPort } = require('./ports/users');
+const { createVaultsPort } = require('./ports/vaults');
 const { createSessionsPort } = require('./ports/sessions');
 const { createCredentialsPort } = require('./ports/credentials');
 const { createAuditReaderPort, createAuditAppend } = require('./ports/audit-reader');
@@ -48,6 +49,7 @@ try {
 }
 
 const users = createUsersPort();
+const vaults = createVaultsPort();
 const sessions = createSessionsPort();
 const credentials = createCredentialsPort();
 const auditReader = createAuditReaderPort();
@@ -97,6 +99,7 @@ const issuer = createSessionIssuer({
 
 createApp({
   users,
+  vaults,
   sessions,
   credentials,
   auditReader,
