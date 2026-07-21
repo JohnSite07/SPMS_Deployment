@@ -16,7 +16,7 @@ function renderAtRoot() {
   return render(
     <MemoryRouter initialEntries={['/']}>
       <Routes>
-        <Route path="/login" element={<div>Login Screen</div>} />
+        <Route path="/welcome" element={<div>Welcome Screen</div>} />
         <Route
           path="/"
           element={
@@ -36,11 +36,11 @@ afterEach(() => {
 });
 
 describe('RequireAuth', () => {
-  it('redirects to /login when there is no session', () => {
+  it('redirects to /welcome when there is no session', () => {
     isAuthenticated.mockReturnValue(false);
     renderAtRoot();
 
-    expect(screen.getByText('Login Screen')).toBeTruthy();
+    expect(screen.getByText('Welcome Screen')).toBeTruthy();
     expect(screen.queryByText('Protected Vault')).toBeNull();
   });
 
@@ -49,6 +49,6 @@ describe('RequireAuth', () => {
     renderAtRoot();
 
     expect(screen.getByText('Protected Vault')).toBeTruthy();
-    expect(screen.queryByText('Login Screen')).toBeNull();
+    expect(screen.queryByText('Welcome Screen')).toBeNull();
   });
 });

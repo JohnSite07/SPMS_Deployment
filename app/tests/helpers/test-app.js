@@ -109,6 +109,7 @@ function testApp({
     issuer,
     audit,
     users: db.users,
+    vaults: db.vaults,
     sessions: sessions ?? db.sessions,
     credentials: db.credentials,
     auditReader: db.auditReader,

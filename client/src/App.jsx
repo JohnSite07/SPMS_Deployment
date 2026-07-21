@@ -4,7 +4,9 @@ import Layout from './components/Layout.jsx';
 import PublicLayout from './components/PublicLayout.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Welcome from './pages/Welcome.jsx';
 import Login from './pages/Login.jsx';
+import SignUp from './pages/SignUp.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 import TwoFactorSetup from './pages/TwoFactorSetup.jsx';
@@ -38,7 +40,9 @@ export default function App() {
     <Routes>
       {/* Public: reachable without a session, no bottom-nav / logout chrome. */}
       <Route element={<PublicLayout />}>
+        <Route path="welcome" element={<Welcome />} />
         <Route path="login" element={<Login />} />
+        <Route path="signup" element={<SignUp />} />
         <Route path="forgot-password" element={<ForgotPassword />} />
         <Route path="reset-password" element={<ResetPassword />} />
         <Route path="2fa-setup" element={<TwoFactorSetup />} />

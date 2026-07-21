@@ -5,6 +5,7 @@ const { createAuthMiddleware } = require('./middleware/authenticate');
 const { errorHandler } = require('./middleware/error-handler');
 const { createCredentialRoutes } = require('./routes/credentials');
 const { createSessionRoutes } = require('./routes/session');
+const { createRegisterRoutes } = require('./routes/register');
 const { createAuditRoutes } = require('./routes/audit');
 const { createAdminAuditRoutes } = require('./routes/admin-audit');
 const { createPasswordResetRoutes } = require('./routes/password-reset');
@@ -21,6 +22,8 @@ const { createTwoFactorRoutes } = require('./routes/two-factor');
  *                      a device sighting lands in the log the login writes to.
  * @param audit         createAuditLog() instance — the only writer.
  * @param users         user port (see routes/session.js).
+ * @param vaults        vault port (see routes/register.js) — the composed
+ *                      VAULTS row a fresh registration is paired with.
  * @param sessions      session port; also supplies isRevoked() to the auth
  *                      middleware, which is what makes logout mean something.
  * @param credentials   credential port (see routes/credentials.js).
@@ -59,6 +62,7 @@ function createApp({
   issuer,
   audit,
   users,
+  vaults,
   sessions,
   credentials,
   auditReader,
@@ -139,6 +143,11 @@ function createApp({
   // POST here is public — it is the request that creates the session every
   // other route requires. DELETE here is not. See PUBLIC_PATHS.
   app.use('/api/session', createSessionRoutes({ users, sessions, issuer, audit }));
+
+  // Public too (PUBLIC_PATHS): a new visitor by definition holds no
+  // session — same reasoning as routes/session.js, routes/password-reset.js
+  // and routes/two-factor.js. PRD 0018.
+  app.use('/api/register', createRegisterRoutes({ users, vaults, audit, hashPassword }));
 
   // Both routes here are public too (PUBLIC_PATHS), for the same reason
   // POST /api/session is: a user with no second factor configured yet holds

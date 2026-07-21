@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Container, Card, Form, Button, Alert, Spinner, InputGroup } from 'react-bootstrap';
 import { enrollTwoFactor, confirmTwoFactor } from '../services/two-factor-service';
 
@@ -29,9 +29,14 @@ const CLIPBOARD_CLEAR_MS = 30000;
 
 export default function TwoFactorSetup() {
   const navigate = useNavigate();
+  const location = useLocation();
 
+  // PRD 0018: a fresh SignUp.jsx hands off here with the just-registered
+  // email carried via router state, so step 1 doesn't make the new user
+  // retype it. Purely a pre-fill — falls back to '' (the prior behaviour)
+  // whenever there's no state, e.g. reached directly via Login.jsx's link.
   const [step, setStep] = useState(1);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(location.state?.email ?? '');
   const [password, setPassword] = useState('');
   const [secret, setSecret] = useState(null);
   const [otpauthUri, setOtpauthUri] = useState(null);

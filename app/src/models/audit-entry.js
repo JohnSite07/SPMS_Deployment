@@ -42,6 +42,7 @@ const ACTIONS = Object.freeze({
   HEALTH_REPORT_GENERATED: 'health_report.generated', // UC-05
   AUDIT_LOG_READ: 'audit_log.read', // an admin read a user's history
   TWO_FACTOR_ENABLED: 'two_factor.enabled', // PRD 0017, 2FA self-enrollment
+  ACCOUNT_CREATED: 'account.created', // PRD 0018, self-service registration
 });
 
 const ACTION_VALUES = Object.freeze(Object.values(ACTIONS));

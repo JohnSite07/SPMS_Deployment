@@ -1,4 +1,4 @@
-const { getPool } = require('../db/pool');
+const { getPool, transaction: sharedTransaction } = require('../db/pool');
 
 // The `users` port session-issuer.js and routes/session.js read/write
 // through. Method-for-method identical to tests/helpers/fake-database.js's
@@ -61,8 +61,15 @@ const USER_WITH_TFA_QUERY = `
    WHERE u.is_deleted = 0 AND
 `;
 
-function createUsersPort({ pool = getPool() } = {}) {
+function createUsersPort({ pool = getPool(), transaction = sharedTransaction } = {}) {
   return {
+    // Exposed the same way ports/credentials.js, ports/password-reset-store.js
+    // and ports/sessions.js expose theirs: routes/register.js runs the USERS
+    // insert, the paired VAULTS insert (ports/vaults.js), and the
+    // ACCOUNT_CREATED audit entry on this one connection, so all three commit
+    // together or not at all.
+    transaction,
+
     async findById(userId) {
       const [rows] = await pool.execute(`${USER_WITH_TFA_QUERY} u.user_id = ?`, [userId]);
       return mapUserRow(rows[0]);
@@ -140,6 +147,23 @@ function createUsersPort({ pool = getPool() } = {}) {
       await conn.execute('UPDATE TWO_FACTOR_CONFIGS SET enabled = TRUE WHERE user_id = ?', [
         userId,
       ]);
+    },
+
+    // PRD 0018 (self-service registration). The exact query DATABASE.md's
+    // catalogue anticipates. Takes `tx`, same pattern as
+    // updateMasterPasswordHash/enableTwoFactorConfig above: routes/
+    // register.js commits this in the same transaction as the paired
+    // ports/vaults.js insert and the ACCOUNT_CREATED audit entry, so a
+    // failure anywhere in that chain rolls the USERS row back too — this
+    // codebase never allows a User without its composed Vault to exist, even
+    // transiently.
+    async createUser(tx, { email, passwordHash }) {
+      const conn = tx ?? pool;
+      const [result] = await conn.execute(
+        'INSERT INTO USERS (email, master_password_hash) VALUES (?, ?)',
+        [email, passwordHash]
+      );
+      return String(result.insertId);
     },
   };
 }

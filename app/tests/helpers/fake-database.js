@@ -17,6 +17,7 @@ function snapshot(state) {
     revoked: new Set(state.revoked),
     users: new Map([...state.users].map(([k, v]) => [k, { ...v }])),
     resetTokens: new Map([...state.resetTokens].map(([k, v]) => [k, { ...v }])),
+    vaults: new Map([...state.vaults].map(([k, v]) => [k, { ...v }])),
   };
 }
 
@@ -25,8 +26,16 @@ function snapshot(state) {
  * @param knownSessions session ids to pre-register as live.
  * @param failAppendOn  an ACTIONS value whose audit append should throw, to
  *                      drive the "unlogged action must not stand" tests.
+ * @param failVaultCreate  PRD 0018: when true, `vaults.create` throws — the
+ *                      fake's way of driving the "a failed vault insert must
+ *                      roll back the user insert too" atomicity test.
  */
-function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = null } = {}) {
+function createFakeDatabase({
+  users = [],
+  knownSessions = [],
+  failAppendOn = null,
+  failVaultCreate = false,
+} = {}) {
   const state = {
     credentials: new Map(),
     entries: [],
@@ -36,6 +45,9 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     // Keyed by the token hash's hex encoding — same shape as the real
     // store's VARBINARY unique index, just addressed in memory.
     resetTokens: new Map(),
+    // PRD 0018: keyed by userId, same 1:1 shape as the real VAULTS table
+    // (UQ_VAULTS_USER).
+    vaults: new Map(),
   };
 
   const appendContexts = [];
@@ -135,6 +147,11 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
   };
 
   const users_ = {
+    // PRD 0018: routes/register.js runs the user insert, the paired vault
+    // insert, and the ACCOUNT_CREATED audit entry all through
+    // `users.transaction`, the same shared snapshot/restore `transaction`
+    // every other fake port below reuses.
+    transaction,
     async findById(userId) {
       return state.users.get(userId) ?? null;
     },
@@ -178,6 +195,38 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
       if (user && user.twoFactorConfig) {
         user.twoFactorConfig = { ...user.twoFactorConfig, enabled: true };
       }
+    },
+    // PRD 0018 (self-service registration). Mirrors ports/users.js's INSERT:
+    // a bare row with no twoFactorConfig, matching a genuinely fresh account
+    // (no TWO_FACTOR_CONFIGS row exists for it yet).
+    async createUser(tx, { email, passwordHash }) {
+      const userId = crypto.randomUUID();
+      state.users.set(userId, {
+        userId,
+        email,
+        masterPasswordHash: passwordHash,
+        failedAttempts: 0,
+        isLocked: false,
+      });
+      return userId;
+    },
+  };
+
+  const vaults = {
+    transaction,
+    // PRD 0018. `failVaultCreate` is this fake's hook for the atomicity
+    // test: routes/register.js calls this inside the same
+    // `users.transaction` as `createUser` above, and `transaction()`'s own
+    // snapshot/restore is what makes a throw here roll the user insert back
+    // too — the same mechanism every other atomicity test in this file
+    // relies on.
+    async create(tx, { userId }) {
+      if (failVaultCreate) {
+        throw new Error('vault insert failed');
+      }
+      // TRUE: a fresh vault starts locked — matches ports/vaults.js's real
+      // insert and the schema's own default (see that file's comment).
+      state.vaults.set(userId, { userId, autoLockMinutes: 10, isLocked: true });
     },
   };
 
@@ -248,6 +297,7 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     credentials,
     sessions,
     users: users_,
+    vaults,
     auditReader,
     resetTokens,
     // Convenience for assertions.
