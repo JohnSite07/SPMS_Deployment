@@ -124,12 +124,21 @@ export default function Credentials() {
       return;
     }
     try {
-      const decrypted = await Promise.all(
+      // Promise.allSettled, not Promise.all: one item's ciphertext failing to
+      // decrypt (e.g. legacy/placeholder data never actually produced by
+      // vault-crypto.js) must not abort analysis for the whole vault. An
+      // undecryptable item is excluded from this run rather than poisoning
+      // every other item's badge and silently leaving a stale report in
+      // place forever.
+      const settled = await Promise.allSettled(
         currentItems.map(async (item) => ({
           itemId: item.itemId,
           password: await decryptField(key, item.encryptedPassword),
         }))
       );
+      const decrypted = settled
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value);
       const { overallScore, findings } = analyzeVault(decrypted);
       if (overallScore === null) {
         setHealthFindings({});

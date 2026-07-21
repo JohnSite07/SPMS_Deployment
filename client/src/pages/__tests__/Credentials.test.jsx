@@ -488,6 +488,39 @@ describe('Credentials screen — password health badges (PRD 0022)', () => {
     expect(okRow.className).not.toMatch(/bg-danger-subtle|bg-warning-subtle/);
   });
 
+  it('excludes an item whose ciphertext fails to decrypt instead of aborting analysis for the whole vault', async () => {
+    // Regression test: a single foreign/legacy ciphertext (e.g. seed data
+    // never actually produced by vault-crypto.js) must not poison every
+    // other item's badge via an all-or-nothing Promise.all rejection.
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    listCredentials.mockResolvedValueOnce(itemsFixture());
+    const plaintextByCiphertext = {
+      'CIPHER-REUSED-A': 'same-Secret1!',
+      'CIPHER-REUSED-B': 'same-Secret1!',
+      'CIPHER-WEAK': 'abcd',
+    };
+    decryptField.mockImplementation(async (_key, ciphertext) => {
+      if (ciphertext === 'CIPHER-STRONG') {
+        throw new Error('OperationError');
+      }
+      return plaintextByCiphertext[ciphertext];
+    });
+
+    renderPage();
+    await screen.findByText('Email');
+
+    await waitFor(() => expect(submitHealthReport).toHaveBeenCalledTimes(1));
+    const [report] = submitHealthReport.mock.calls[0];
+    const byId = Object.fromEntries(report.findings.map((f) => [f.itemId, f.status]));
+    // i4 (the undecryptable one) is excluded entirely — not present, not
+    // miscounted as OK or WEAK — rather than the whole call throwing and
+    // leaving healthFindings/submitHealthReport untouched.
+    expect(byId).toEqual({ i1: 'REUSED', i2: 'REUSED', i3: 'WEAK' });
+    expect(byId.i4).toBeUndefined();
+    // round(100 * 0 / 3) = 0 — the three analyzable items are all flagged.
+    expect(report.overallScore).toBe(0);
+  });
+
   it('does not attempt analysis or submit a report for an empty vault', async () => {
     vaultKeyStore.setVaultKey(FAKE_KEY);
     listCredentials.mockResolvedValueOnce([]);

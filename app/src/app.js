@@ -11,6 +11,7 @@ const { createAdminAuditRoutes } = require('./routes/admin-audit');
 const { createPasswordResetRoutes } = require('./routes/password-reset');
 const { createTwoFactorRoutes } = require('./routes/two-factor');
 const { createPasswordHealthRoutes } = require('./routes/password-health');
+const { loadTrustProxyHops } = require('./config/env');
 
 // App factory, separated from server.js so tests can mount it without binding
 // a port. Every collaborator is injected: this module wires ports together
@@ -55,18 +56,24 @@ function createApp({
   app.disable('x-powered-by');
   app.use(express.json());
 
-  // TODO(audit): `trust proxy` is unset, so `req.ip` is the socket peer —
-  // under Cloud Run that is the Google front end (locally: ::ffff:127.0.0.1),
-  // never the client. Every entry services/audit-log.js writes would record
-  // the same useless address.
+  // What `req.ip` resolves to, and therefore what services/audit-log.js
+  // records on every entry. Set from TRUST_PROXY_HOPS, which config/env.js
+  // parses and range-checks; it is a hop count and never a boolean, because
+  // `trust proxy: true` would let a client pick its own audit-log address.
+  // See the long note in config/env.js for why counting from the right is the
+  // property that makes the address unforgeable.
   //
-  // Do not "fix" this with `trust proxy: true`. That takes the left-most
-  // X-Forwarded-For entry, which the client supplies, letting an attacker
-  // choose what the audit log says about them. The correct value is the
-  // number of proxies actually in front of the container, which has to be
-  // confirmed against a deployed revision (log X-Forwarded-For and count the
-  // hops) rather than assumed — direct *.run.app and an external HTTPS load
-  // balancer do not agree.
+  // The count is deployment topology, not a code constant: direct *.run.app
+  // and an external HTTPS load balancer put a different number of hops in
+  // front of this container, so it is confirmed against a deployed revision
+  // (log X-Forwarded-For, count the entries) and set on the service. Left
+  // unset it is 0 — `req.ip` is the socket peer, which under Cloud Run is the
+  // Google front end, so entries carry a useless address rather than a
+  // confidently wrong one. Until DevOps sets it, that is the state.
+  const trustProxyHops = loadTrustProxyHops();
+  if (trustProxyHops > 0) {
+    app.set('trust proxy', trustProxyHops);
+  }
 
   // Health endpoint: used by the CD pipeline's smoke test against the
   // candidate revision before traffic is shifted. Keep it dependency-free
