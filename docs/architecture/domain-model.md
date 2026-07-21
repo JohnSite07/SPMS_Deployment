@@ -35,6 +35,7 @@ The object model that realises SecureVault's requirements. Source: Milestone 3, 
 - `Credential.encryptedPassword` and `SecureDocument.encryptedBlob` are ciphertext at rest (AES-256). The data model must not provide a path that persists their plaintext.
 - `AuditLog` / `AuditEntry` are **append-only** — the schema and access layer must forbid update/delete by users (business rule 7). How this is enforced in code is recorded in [ADR 0006](../decisions/0006-append-only-audit-log-enforcement.md).
 - `Vault.autoLockMinutes` defaults to the 10-minute auto-lock rule (business rule 5).
+- `TwoFactorConfig.enabled` starts `FALSE` (pending) and is only ever flipped to `TRUE` by a live TOTP code proving the holder has the secret — self-service enrollment (`POST /api/2fa/enroll` + `/confirm`) now lets a user satisfy UC-01's "2FA set up" precondition themselves, rather than it only being a seeded assumption. See [PRD 0017](../action_plan/0017-two-factor-enrollment.md) and [ADR 0012](../decisions/0012-two-factor-enrollment-separate-public-surface.md) (why enrollment is a separate public surface, not inferred from a failed login).
 
 ## AuditEntry: deviations from the M3 model
 

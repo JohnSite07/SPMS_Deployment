@@ -40,6 +40,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0009 — Frontend stack and serving model: React/Vite served by Cloud Run, not a CDN bucket](decisions/0009-frontend-stack-and-serving-model.md)
 - [0010 — In-memory session-token storage in the SPA (no localStorage/sessionStorage/cookies)](decisions/0010-in-memory-session-token-storage.md)
 - [0011 — Design-system baseline: react-bootstrap + a single SASS token file](decisions/0011-design-system-baseline.md)
+- [0012 — Two-factor enrollment as a separate public, pre-session surface](decisions/0012-two-factor-enrollment-separate-public-surface.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment

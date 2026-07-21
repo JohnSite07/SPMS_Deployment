@@ -23,11 +23,19 @@ const { createTokenService } = require('../services/token-service');
 // /request is the request that would otherwise need one to explain who it's
 // for. Both are POST-scoped, not bare paths, for the same reason logout
 // isn't bare: there is no GET/DELETE on this router to accidentally expose.
+//
+// The 2FA enrollment pair is public for the same reason: a user with no
+// second factor configured yet cannot hold a session token either (UC-01's
+// precondition), so /enroll and /confirm are, like login, the requests that
+// create the very thing a token would otherwise be needed to prove. See
+// PRD 0017 and routes/two-factor.js.
 const PUBLIC_PATHS = Object.freeze([
   '/health',
   'POST /api/session',
   'POST /api/password-reset/request',
   'POST /api/password-reset/confirm',
+  'POST /api/2fa/enroll',
+  'POST /api/2fa/confirm',
 ]);
 
 const METHOD_SCOPED_ENTRY = /^([A-Z]+)\s+(\/.*)$/;

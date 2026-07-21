@@ -148,6 +148,12 @@ export default function Login() {
               Forgot password?
             </Link>
           </div>
+
+          <div className="text-center mt-2">
+            <Link to="/2fa-setup" className="small text-decoration-none">
+              Need to set up two-factor authentication?
+            </Link>
+          </div>
         </Card.Body>
       </Card>
     </Container>
