@@ -42,6 +42,34 @@ function present(row) {
 const SELECT_COLUMNS =
   'entry_id, user_id, action, event_time, ip_address, target_user_id, actor_user_id';
 
+// `LIMIT` cannot be a bound parameter here, and the reason is in mysql2 rather
+// than in MySQL. Its binary-protocol encoder types *every* JS number as
+// DOUBLE (lib/packets/encode_parameter.js, `case 'number'`), while MySQL
+// requires an integer type for LIMIT — so `LIMIT ?` is rejected with
+// "Incorrect arguments to mysqld_stmt_execute" on every call, whatever the
+// value. This was the /api/audit 500: the log read could never succeed, while
+// the INSERT alongside it (which binds no LIMIT) always did.
+//
+// So the count is interpolated, and therefore has to be proven an integer
+// here. Validating in the port rather than trusting routes/pagination.js is
+// the point: this is the only place in the file where a value reaches SQL as
+// text instead of a parameter, so it is the only place where being wrong is
+// an injection rather than a type error. A caller that hands over "1; DROP"
+// gets a TypeError, not a query.
+const MAX_LIMIT = 1000;
+
+function toLimitLiteral(limit) {
+  const value = typeof limit === 'number' ? limit : Number(limit);
+
+  if (!Number.isInteger(value) || value < 1 || value > MAX_LIMIT) {
+    throw new TypeError(
+      `limit must be an integer between 1 and ${MAX_LIMIT}; got ${JSON.stringify(limit)}`
+    );
+  }
+
+  return String(value);
+}
+
 function createAuditReaderPort({ pool = getPool(), transaction = sharedTransaction } = {}) {
   return {
     transaction,
@@ -53,6 +81,9 @@ function createAuditReaderPort({ pool = getPool(), transaction = sharedTransacti
     // `entry_id` as a string (0014 kept it INT), so it is cast back to a
     // number for the comparison.
     async list({ userId, limit, after = null }) {
+      // Built before the query, so a bad count throws instead of reaching SQL.
+      const limitLiteral = toLimitLiteral(limit);
+
       const params = [userId];
       let whereAfter = '';
       if (after) {
@@ -60,14 +91,13 @@ function createAuditReaderPort({ pool = getPool(), transaction = sharedTransacti
         const cursorTime = new Date(after.timestampMillis);
         params.push(cursorTime, cursorTime, Number(after.entryId));
       }
-      params.push(limit);
 
       const [rows] = await pool.execute(
         `SELECT ${SELECT_COLUMNS}
            FROM AUDIT_ENTRIES
           WHERE user_id = ?${whereAfter}
           ORDER BY event_time DESC, entry_id DESC
-          LIMIT ?`,
+          LIMIT ${limitLiteral}`,
         params
       );
 

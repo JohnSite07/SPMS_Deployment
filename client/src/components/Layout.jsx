@@ -19,7 +19,7 @@ export default function Layout() {
     if (path.startsWith('/credentials')) return 'Add Credential';
     if (path.startsWith('/documents')) return 'Secure Documents';
     if (path.startsWith('/health')) return 'Password Health';
-    if (path.startsWith('/activity')) return 'Audit Log';
+    if (path.startsWith('/activity')) return 'Activity';
     return 'Vault Dashboard';
   };
 
