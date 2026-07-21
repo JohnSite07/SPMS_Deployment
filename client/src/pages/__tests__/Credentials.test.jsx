@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 // The vault key is real (vault-key-store.js is trivial in-memory state, no
 // crypto), but encryption/decryption and the network layer are mocked so
-// this suite exercises the SCREEN only (PRD 0019) — the real crypto
-// round-trip is covered by vault-crypto.test.js, and the real request
-// shapes by credentials-service.test.js.
+// this suite exercises the SCREEN only (PRD 0019/0022) — the real crypto
+// round-trip is covered by vault-crypto.test.js, the real request shapes by
+// credentials-service.test.js/password-health-service.test.js, and the real
+// weak/reused scoring by vault-health-analyzer.test.js (used for real here,
+// unmocked, since it is pure and its own dedicated suite already covers it).
 vi.mock('../../services/credentials-service', () => ({
   listCredentials: vi.fn(),
   getCredential: vi.fn(),
@@ -20,6 +23,10 @@ vi.mock('../../services/vault-crypto', () => ({
   decryptField: vi.fn(),
 }));
 
+vi.mock('../../services/password-health-service', () => ({
+  submitHealthReport: vi.fn(),
+}));
+
 import {
   listCredentials,
   getCredential,
@@ -28,13 +35,19 @@ import {
   deleteCredential,
 } from '../../services/credentials-service';
 import { encryptField, decryptField } from '../../services/vault-crypto';
+import { submitHealthReport } from '../../services/password-health-service';
 import * as vaultKeyStore from '../../services/vault-key-store.js';
 import Credentials from '../Credentials.jsx';
 
 const FAKE_KEY = { algorithm: { name: 'AES-GCM' } };
 
-function renderPage() {
-  return render(<Credentials />);
+function renderPage({ route = '/', state } = {}) {
+  const initialEntries = [state ? { pathname: route, state } : route];
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <Credentials />
+    </MemoryRouter>
+  );
 }
 
 beforeEach(() => {
@@ -45,6 +58,7 @@ beforeEach(() => {
   deleteCredential.mockReset();
   encryptField.mockReset();
   decryptField.mockReset();
+  submitHealthReport.mockReset();
   vaultKeyStore.clear();
 
   Object.defineProperty(window.navigator, 'clipboard', {
@@ -94,7 +108,10 @@ describe('Credentials screen (PRD 0019)', () => {
     expect(screen.getByText('Bank')).toBeTruthy();
     expect(screen.getByText('me@example.com')).toBeTruthy();
     expect(screen.queryByText('CIPHER1==')).toBeNull();
-    expect(decryptField).not.toHaveBeenCalled();
+    // PRD 0022: the list still never DISPLAYS a decrypted password, but it
+    // does now decrypt each item's password transiently, in memory, purely
+    // to compute the health badges below.
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(2));
   });
 
   it('filters the already-fetched list client-side, with no additional API call', async () => {
@@ -154,7 +171,9 @@ describe('Credentials screen (PRD 0019)', () => {
     };
     listCredentials.mockResolvedValueOnce([item]);
     getCredential.mockResolvedValueOnce(item);
-    decryptField.mockResolvedValueOnce('hunter2');
+    // First call is the mount-time health analysis decrypting this same
+    // item; the second is the user's explicit reveal.
+    decryptField.mockResolvedValueOnce('irrelevant-for-analysis').mockResolvedValueOnce('hunter2');
 
     renderPage();
     await screen.findByText('Email');
@@ -163,11 +182,12 @@ describe('Credentials screen (PRD 0019)', () => {
     await waitFor(() => expect(getCredential).toHaveBeenCalledWith('i1'));
 
     expect(await screen.findByDisplayValue('••••••••••••')).toBeTruthy();
-    expect(decryptField).not.toHaveBeenCalled();
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole('button', { name: /reveal/i }));
 
-    await waitFor(() => expect(decryptField).toHaveBeenCalledWith(FAKE_KEY, 'CIPHER1=='));
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(2));
+    expect(decryptField).toHaveBeenLastCalledWith(FAKE_KEY, 'CIPHER1==');
     expect(await screen.findByDisplayValue('hunter2')).toBeTruthy();
   });
 
@@ -176,12 +196,16 @@ describe('Credentials screen (PRD 0019)', () => {
     const item = { itemId: 'i1', title: 'Email', url: '', username: '', encryptedPassword: 'CIPHER1==' };
     listCredentials.mockResolvedValueOnce([item]);
     getCredential.mockResolvedValueOnce(item);
-    decryptField.mockRejectedValueOnce(new Error('OperationError'));
+    // Analysis's own decrypt call succeeds (or fails — either way it is
+    // swallowed internally); the user's explicit reveal is the one that
+    // throws and must be surfaced.
+    decryptField.mockResolvedValueOnce('irrelevant-for-analysis').mockRejectedValueOnce(new Error('OperationError'));
 
     renderPage();
     await screen.findByText('Email');
     fireEvent.click(screen.getByRole('button', { name: 'Email' }));
     await waitFor(() => expect(getCredential).toHaveBeenCalled());
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole('button', { name: /reveal/i }));
 
@@ -195,12 +219,13 @@ describe('Credentials screen (PRD 0019)', () => {
     const item = { itemId: 'i1', title: 'Email', url: '', username: '', encryptedPassword: 'CIPHER1==' };
     listCredentials.mockResolvedValueOnce([item]);
     getCredential.mockResolvedValueOnce(item);
-    decryptField.mockResolvedValueOnce('hunter2');
+    decryptField.mockResolvedValueOnce('irrelevant-for-analysis').mockResolvedValueOnce('hunter2');
 
     renderPage();
     await screen.findByText('Email');
     fireEvent.click(screen.getByRole('button', { name: 'Email' }));
     await waitFor(() => expect(getCredential).toHaveBeenCalled());
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: /reveal/i }));
     await screen.findByDisplayValue('hunter2');
 
@@ -227,12 +252,13 @@ describe('Credentials screen (PRD 0019)', () => {
     const item = { itemId: 'i1', title: 'Email', url: '', username: '', encryptedPassword: 'CIPHER1==' };
     listCredentials.mockResolvedValueOnce([item]);
     getCredential.mockResolvedValueOnce(item);
-    decryptField.mockResolvedValueOnce('hunter2');
+    decryptField.mockResolvedValueOnce('irrelevant-for-analysis').mockResolvedValueOnce('hunter2');
 
     renderPage();
     await screen.findByText('Email');
     fireEvent.click(screen.getByRole('button', { name: 'Email' }));
     await waitFor(() => expect(getCredential).toHaveBeenCalled());
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: /reveal/i }));
     await screen.findByDisplayValue('hunter2');
 
@@ -314,7 +340,9 @@ describe('Credentials screen (PRD 0019)', () => {
 
     const currentPasswordInput = await screen.findByLabelText(/current password/i);
     expect(currentPasswordInput.value).toBe('••••••••••••');
-    expect(decryptField).not.toHaveBeenCalled();
+    // Only the mount-time health analysis decrypted this item — the edit
+    // form's "reveal existing" was never clicked.
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(1));
   });
 
   it('delete: requires an explicit confirmation before calling the API', async () => {
@@ -347,5 +375,164 @@ describe('Credentials screen (PRD 0019)', () => {
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
     expect(deleteCredential).not.toHaveBeenCalled();
+  });
+
+  // PRD 0021 — password generator + live strength meter. generatePassword and
+  // scorePasswordStrength are real (not mocked): they are pure, side-effect
+  // free, and their own dedicated unit tests already cover the crypto and
+  // scoring in depth — here we only need to confirm the screen wires them up.
+  it('add: generating a password fills the field, reveals it, and shows a strength meter', async () => {
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    listCredentials.mockResolvedValueOnce([]);
+
+    renderPage();
+    await screen.findByText(/vault is empty/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /add credential/i }));
+    expect(screen.queryByTestId('add-password-strength')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /generate strong password/i }));
+
+    const passwordInput = screen.getByLabelText('Password');
+    expect(passwordInput.value.length).toBeGreaterThan(0);
+    expect(passwordInput.type).toBe('text'); // revealed after generating
+
+    expect(screen.getByTestId('add-password-strength')).toBeTruthy();
+  });
+
+  it('add: the strength meter updates as the user types', async () => {
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    listCredentials.mockResolvedValueOnce([]);
+
+    renderPage();
+    await screen.findByText(/vault is empty/i);
+    fireEvent.click(screen.getByRole('button', { name: /add credential/i }));
+
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'aaaa' } });
+    expect(screen.getByText('Weak')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Tr7$kL9!qWbZx2#Q' } });
+    expect(screen.getByText('Strong')).toBeTruthy();
+  });
+
+  it('edit: generating a new password fills the field and shows a strength meter', async () => {
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    const item = {
+      itemId: 'i1',
+      title: 'Email',
+      url: 'https://mail.example.com',
+      username: 'me',
+      encryptedPassword: 'CIPHER1==',
+    };
+    listCredentials.mockResolvedValueOnce([item]);
+
+    renderPage();
+    await screen.findByText('Email');
+    fireEvent.click(screen.getByRole('button', { name: /edit email/i }));
+
+    expect(screen.queryByTestId('edit-password-strength')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /generate strong password/i }));
+
+    const newPasswordInput = screen.getByLabelText('New password');
+    expect(newPasswordInput.value.length).toBeGreaterThan(0);
+    expect(newPasswordInput.type).toBe('text');
+    expect(screen.getByTestId('edit-password-strength')).toBeTruthy();
+  });
+});
+
+describe('Credentials screen — password health badges (PRD 0022)', () => {
+  function itemsFixture() {
+    return [
+      { itemId: 'i1', title: 'Email', url: '', username: 'me', encryptedPassword: 'CIPHER-REUSED-A' },
+      { itemId: 'i2', title: 'Bank', url: '', username: 'me', encryptedPassword: 'CIPHER-REUSED-B' },
+      { itemId: 'i3', title: 'Forum', url: '', username: 'me', encryptedPassword: 'CIPHER-WEAK' },
+      { itemId: 'i4', title: 'Work VPN', url: '', username: 'me', encryptedPassword: 'CIPHER-STRONG' },
+    ];
+  }
+
+  // Deterministic ciphertext -> plaintext mapping, independent of call order
+  // — i1 and i2 share a password (REUSED), i3 is short (WEAK), i4 is long
+  // and varied (OK).
+  function wirePlaintextMap() {
+    const plaintextByCiphertext = {
+      'CIPHER-REUSED-A': 'same-Secret1!',
+      'CIPHER-REUSED-B': 'same-Secret1!',
+      'CIPHER-WEAK': 'abcd',
+      'CIPHER-STRONG': 'Tr7$kL9!qWbZx2#Q',
+    };
+    decryptField.mockImplementation(async (_key, ciphertext) => plaintextByCiphertext[ciphertext]);
+  }
+
+  it('decrypts every item on mount, submits the computed report, and colors rows by finding', async () => {
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    listCredentials.mockResolvedValueOnce(itemsFixture());
+    wirePlaintextMap();
+
+    renderPage();
+    await screen.findByText('Email');
+
+    await waitFor(() => expect(submitHealthReport).toHaveBeenCalledTimes(1));
+    const [report] = submitHealthReport.mock.calls[0];
+    const byId = Object.fromEntries(report.findings.map((f) => [f.itemId, f.status]));
+    expect(byId).toEqual({ i1: 'REUSED', i2: 'REUSED', i3: 'WEAK', i4: 'OK' });
+    // round(100 * 1 / 4) = 25
+    expect(report.overallScore).toBe(25);
+
+    const reusedRow = screen.getByText('Email').closest('tr');
+    const weakRow = screen.getByText('Forum').closest('tr');
+    const okRow = screen.getByText('Work VPN').closest('tr');
+
+    expect(reusedRow.className).toMatch(/bg-danger-subtle/);
+    expect(weakRow.className).toMatch(/bg-warning-subtle/);
+    expect(okRow.className).not.toMatch(/bg-danger-subtle|bg-warning-subtle/);
+  });
+
+  it('does not attempt analysis or submit a report for an empty vault', async () => {
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    listCredentials.mockResolvedValueOnce([]);
+
+    renderPage();
+    await screen.findByText(/vault is empty/i);
+
+    expect(decryptField).not.toHaveBeenCalled();
+    expect(submitHealthReport).not.toHaveBeenCalled();
+  });
+
+  it('re-runs analysis after a credential is deleted', async () => {
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    listCredentials.mockResolvedValueOnce(itemsFixture());
+    wirePlaintextMap();
+    deleteCredential.mockResolvedValueOnce(null);
+
+    renderPage();
+    await screen.findByText('Email');
+    await waitFor(() => expect(submitHealthReport).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: /delete bank/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    await waitFor(() => expect(deleteCredential).toHaveBeenCalledWith('i2'));
+    // Removing i2 resolves i1's reuse pairing — analysis reran with the
+    // remaining three items.
+    await waitFor(() => expect(submitHealthReport).toHaveBeenCalledTimes(2));
+    const [secondReport] = submitHealthReport.mock.calls[1];
+    const byId = Object.fromEntries(secondReport.findings.map((f) => [f.itemId, f.status]));
+    expect(byId).toEqual({ i1: 'OK', i3: 'WEAK', i4: 'OK' });
+  });
+
+  it('opens the credential named by router state (the "Fix now" deep link) once the list loads', async () => {
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    const item = itemsFixture()[2]; // Forum, the weak one
+    listCredentials.mockResolvedValueOnce(itemsFixture());
+    wirePlaintextMap();
+    getCredential.mockResolvedValueOnce(item);
+
+    renderPage({ state: { openItemId: 'i3' } });
+
+    await waitFor(() => expect(getCredential).toHaveBeenCalledWith('i3'));
+    // The View modal opened (masked password field rendered) for the item
+    // named by the deep link, without the user clicking anything.
+    expect(await screen.findByDisplayValue('••••••••••••')).toBeTruthy();
   });
 });
