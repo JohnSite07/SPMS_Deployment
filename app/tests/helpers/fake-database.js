@@ -160,6 +160,25 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
         user.masterPasswordHash = hash;
       }
     },
+    // PRD 0017 (2FA self-enrollment). Mirrors ports/users.js's upsert: writes
+    // (or replaces) a pending — `enabled: false` — config, same shape
+    // findByEmail/findById already attach to a seeded user.
+    async upsertPendingTwoFactorConfig(userId, encryptedSecret) {
+      const user = state.users.get(userId);
+      if (user) {
+        user.twoFactorConfig = { method: 'TOTP', enabled: false, encryptedSecret };
+      }
+    },
+    // The only place `enabled` flips to true, matching ports/users.js. Takes
+    // `tx` (unused here — this fake shares one in-memory state guarded by
+    // transaction()'s own snapshot/restore) so callers exercise the same
+    // (tx, userId) shape the real pooled port requires.
+    async enableTwoFactorConfig(tx, userId) {
+      const user = state.users.get(userId);
+      if (user && user.twoFactorConfig) {
+        user.twoFactorConfig = { ...user.twoFactorConfig, enabled: true };
+      }
+    },
   };
 
   const resetTokenKey = (tokenHash) =>

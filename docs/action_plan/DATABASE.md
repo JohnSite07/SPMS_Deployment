@@ -543,6 +543,19 @@ UPDATE TWO_FACTOR_CONFIGS SET enabled = ? WHERE user_id = ?;      -- enable afte
 UPDATE TWO_FACTOR_CONFIGS SET method = ?, secret_enc = ?, secret_iv = ?, secret_tag = ?, enabled = FALSE
   WHERE user_id = ?;                                             -- re-enroll
 DELETE FROM TWO_FACTOR_CONFIGS WHERE user_id = ?;
+-- PRD 0017 (self-service TOTP enrollment) -----------------------------------
+-- Upsert a pending (unconfirmed) secret on UQ_TFA_USER — always leaves enabled=FALSE,
+-- so a re-run of /enroll (e.g. after a botched confirm) replaces the pending
+-- secret instead of accumulating rows or ever writing an enabled one directly.
+INSERT INTO TWO_FACTOR_CONFIGS (user_id, method, secret_enc, secret_iv, secret_tag, enabled)
+     VALUES (?, 'TOTP', ?, ?, ?, FALSE)
+  ON DUPLICATE KEY UPDATE
+     method = 'TOTP', secret_enc = VALUES(secret_enc), secret_iv = VALUES(secret_iv),
+     secret_tag = VALUES(secret_tag), enabled = FALSE;
+-- The only statement that ever flips enabled to TRUE — run inside the same
+-- transaction as the TWO_FACTOR_ENABLED audit insert and the session start
+-- (app/src/routes/two-factor.js), so a failure anywhere rolls all of it back.
+UPDATE TWO_FACTOR_CONFIGS SET enabled = TRUE WHERE user_id = ?;  -- confirm: live TOTP code verified
 
 
 -- ===== 7. SESSIONS =========================================================

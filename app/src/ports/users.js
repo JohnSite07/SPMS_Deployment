@@ -107,6 +107,40 @@ function createUsersPort({ pool = getPool() } = {}) {
         userId,
       ]);
     },
+
+    // PRD 0017 (2FA self-enrollment). Writes a *pending* (enabled=FALSE) TOTP
+    // config — findByEmail/findById's LEFT JOIN above returns this row
+    // regardless of `enabled`, so routes/two-factor.js can read it straight
+    // back to confirm it. UQ_TFA_USER makes this a clean upsert: a user
+    // re-running /enroll (e.g. after a botched confirm) replaces the pending
+    // secret rather than accumulating rows.
+    async upsertPendingTwoFactorConfig(userId, { ciphertext, iv, tag }) {
+      await pool.execute(
+        `INSERT INTO TWO_FACTOR_CONFIGS (user_id, method, secret_enc, secret_iv, secret_tag, enabled)
+              VALUES (?, 'TOTP', ?, ?, ?, FALSE)
+         ON DUPLICATE KEY UPDATE
+              method = 'TOTP',
+              secret_enc = VALUES(secret_enc),
+              secret_iv = VALUES(secret_iv),
+              secret_tag = VALUES(secret_tag),
+              enabled = FALSE`,
+        [userId, ciphertext, iv, tag]
+      );
+    },
+
+    // PRD 0017. The only place `enabled` ever flips to TRUE — routes/
+    // two-factor.js calls this only after a live TOTP code has verified
+    // against the pending secret. Takes `tx`, same pattern as
+    // updateMasterPasswordHash above: routes/two-factor.js commits this in
+    // the same transaction as the TWO_FACTOR_ENABLED audit entry and the
+    // session it starts, so a failure anywhere in that chain rolls all of it
+    // back rather than leaving `enabled=TRUE` with no entry describing it.
+    async enableTwoFactorConfig(tx, userId) {
+      const conn = tx ?? pool;
+      await conn.execute('UPDATE TWO_FACTOR_CONFIGS SET enabled = TRUE WHERE user_id = ?', [
+        userId,
+      ]);
+    },
   };
 }
 

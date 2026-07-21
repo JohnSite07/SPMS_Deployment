@@ -8,6 +8,7 @@ const { createSessionRoutes } = require('./routes/session');
 const { createAuditRoutes } = require('./routes/audit');
 const { createAdminAuditRoutes } = require('./routes/admin-audit');
 const { createPasswordResetRoutes } = require('./routes/password-reset');
+const { createTwoFactorRoutes } = require('./routes/two-factor');
 
 // App factory, separated from server.js so tests can mount it without binding
 // a port. Every collaborator is injected: this module wires ports together
@@ -138,6 +139,13 @@ function createApp({
   // POST here is public — it is the request that creates the session every
   // other route requires. DELETE here is not. See PUBLIC_PATHS.
   app.use('/api/session', createSessionRoutes({ users, sessions, issuer, audit }));
+
+  // Both routes here are public too (PUBLIC_PATHS), for the same reason
+  // POST /api/session is: a user with no second factor configured yet holds
+  // no session token either, so enrollment has to be reachable before one
+  // exists. PRD 0017.
+  app.use('/api/2fa', createTwoFactorRoutes({ users, issuer, audit, sessions }));
+
   app.use('/api/credentials', createCredentialRoutes({ store: credentials, audit }));
 
   // Both routes here are public too (PUBLIC_PATHS): a forgotten master

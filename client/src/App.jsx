@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import Login from './pages/Login.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
+import TwoFactorSetup from './pages/TwoFactorSetup.jsx';
 import Credentials from './pages/Credentials.jsx';
 import Documents from './pages/Documents.jsx';
 import PasswordHealth from './pages/PasswordHealth.jsx';
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="login" element={<Login />} />
         <Route path="forgot-password" element={<ForgotPassword />} />
         <Route path="reset-password" element={<ResetPassword />} />
+        <Route path="2fa-setup" element={<TwoFactorSetup />} />
       </Route>
 
       {/* Protected: the Vault Dashboard hub and its spokes, all auth-gated. */}
