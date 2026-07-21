@@ -1,10 +1,12 @@
 # 0016 — SMTP Provisioning for Password-Reset Email (DevOps hand-off)
 
-Provision the outbound-email path so the password-reset flow (PRD [0015](0015-password-reset-flow.md)) can actually send its reset links. This is a **DevOps-executed** change — it touches `terraform/` and Secret Manager, both DevOps-owned. The application code is already deploy-safe and needs **no** change: it auto-enables the reset routes the moment this config is present.
+> **Framing update (2026-07-21):** password reset **no longer depends on this PRD at all.** PRD [0020](0020-totp-based-password-reset.md) replaced PRD 0015's emailed-token reset with a TOTP-verified flow that needs no outbound email, precisely because this PRD had never been actioned and the email-link flow could never actually send anything in the deployed environment. The scope, success criteria, and commands below are left as originally written (they were accurate for PRD 0015's flow) but should now be read as describing **general-purpose SMTP provisioning**, not a password-reset blocker — `services/email-service.js` was kept unwired but in place specifically because the domain model's `SecurityAlert` (weak/reused-password notifications) is documented as depending on an `EmailService`, and a future feature built to that spec would still need this work done. Status is left `Draft` rather than `Abandoned`: nothing currently in the app calls `EmailService`, so there is no live urgency, but the underlying infra task (choose a provider, rotate the two placeholder secrets, wire `SMTP_HOST`/`SMTP_PORT`) is still real, undone work that a `SecurityAlert` feature would need revived — re-scope its user story away from "password-reset email" before picking this back up.
+
+Provision the outbound-email path so a password-reset flow (PRD [0015](0015-password-reset-flow.md), since superseded by [0020](0020-totp-based-password-reset.md)) could send its reset links. This is a **DevOps-executed** change — it touches `terraform/` and Secret Manager, both DevOps-owned. The application code was deploy-safe and needed **no** change: it would have auto-enabled the reset routes the moment this config was present. That specific consumer no longer exists (see the framing note above); the infra shape below is otherwise unchanged and reusable.
 
 | | |
 | --- | --- |
-| **Status** | Draft (awaiting DevOps) |
+| **Status** | Draft (awaiting DevOps) — no longer blocking password reset; see framing note above |
 | **Date** | 2026-07-13 |
 | **Author** | Developer team (feature: Login & Reset), for the DevOps team |
 

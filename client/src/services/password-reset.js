@@ -1,17 +1,16 @@
-// UC — forgotten master password reset (PRD 0015). Both endpoints are public
-// (no session token) and deliberately narrow: `request` never reveals whether
-// the email exists (the backend always answers the same generic 200), and
-// `confirm` carries only the opaque reset token from the URL plus the new
-// password — never the account's current session/token state. Neither
-// function touches token-store: a reset never authenticates the browser, it
-// only lets the user log in again afterwards via the existing Login screen.
+// UC — forgotten master password reset (PRD 0020, replacing PRD 0015's
+// emailed-token flow). Identity is proven with the user's already-enrolled
+// 2FA authenticator code instead of an emailed link, so there is nothing to
+// "request" — a single call carries the email, the current TOTP code, and
+// the new master password, and either succeeds (204) or fails with a generic
+// 401 (unknown email / no enabled 2FA / wrong code, indistinguishable by
+// design) or a 400 weak_password. Neither this module nor the caller ever
+// authenticates the browser via this flow: a reset only lets the user log in
+// again afterwards via the existing Login screen, so token-store is never
+// touched here.
 
 import { post } from './api-client';
 
-export async function requestReset({ email } = {}) {
-  return post('/password-reset/request', { email });
-}
-
-export async function confirmReset({ token, newPassword } = {}) {
-  return post('/password-reset/confirm', { token, newPassword });
+export async function resetPassword({ email, code, newPassword } = {}) {
+  return post('/password-reset', { email, code, newPassword });
 }

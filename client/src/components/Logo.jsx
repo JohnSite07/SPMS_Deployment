@@ -7,7 +7,7 @@
 // The shield fill is `currentColor`, never a hardcoded hex, and the wrapping
 // element carries Bootstrap's `text-primary` utility class — the same class
 // every other screen already uses for its plain-text "SecureVault" wordmark
-// (Login.jsx, ForgotPassword.jsx, ResetPassword.jsx, TwoFactorSetup.jsx) — so
+// (Login.jsx, ForgotPassword.jsx, TwoFactorSetup.jsx) — so
 // the mark's colour tracks the `$primary` token in theme.scss rather than
 // being baked in here (frontend rule 2).
 //

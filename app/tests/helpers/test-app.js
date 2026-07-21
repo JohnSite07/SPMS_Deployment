@@ -40,11 +40,6 @@ const verifyTwoFactorCode = async (config, code) => code === TWO_FACTOR_CODE;
 // reads it back.
 const fakeHashPassword = async (password) => `hash:${password}`;
 
-// No real DNS/network involved — password-reset.js only ever concatenates
-// this with a path, and email-service.js never sends over a real transport
-// in tests.
-const TEST_APP_BASE_URL = 'https://securevault.test';
-
 // Entries written in the same millisecond are ordered by entryId, which is a
 // random uuid — a total order, but not insertion order. Tests that assert
 // "newest first" must therefore write entries at distinct times, or they are
@@ -68,20 +63,6 @@ function testApp({
   db = createFakeDatabase({ users: [seedUser()] }),
   sessions,
   clock = monotonicClock(),
-  // Deliberately NOT `clock`: `clock` above drives the audit log's entry
-  // ordering (see monotonicClock's own comment) and is usually a fake epoch
-  // far from real wall-clock time. The fake resetTokens store compares a
-  // token's expiresAt against the real Date.now() (mirroring the real
-  // store's `expires_at > NOW()`, where NOW() is MySQL's real clock), so
-  // reusing `clock` here would make every freshly-minted token look already
-  // expired. Tests that need to control expiry pass `resetClock` instead.
-  resetClock = () => Date.now(),
-  // Deploy-safe SMTP: false simulates server.js's non-fatal catch around
-  // loadPasswordResetConfig() (SMTP not yet provisioned) by omitting `email`
-  // and `appBaseUrl` from createApp, exactly as server.js does when that
-  // config fails to load. See routes/password-reset.js's own "disabled
-  // mode" note.
-  passwordResetEnabled = true,
 } = {}) {
   const tokenService = testTokenService();
   const audit = createAuditLog({ append: db.append, clock });
@@ -98,12 +79,6 @@ function testApp({
     onDeviceSeen: () => {},
   });
 
-  // Records every send without touching a real SMTP connection — see
-  // services/email-service.js's own note on why the transport is always
-  // injected. Tests read `email.sendPasswordResetEmail.mock.calls` to pull
-  // the resetUrl (and, from it, the raw token) a route handed to it.
-  const email = passwordResetEnabled ? { sendPasswordResetEmail: jest.fn(async () => {}) } : null;
-
   const app = createApp({
     tokenService,
     issuer,
@@ -113,14 +88,10 @@ function testApp({
     sessions: sessions ?? db.sessions,
     credentials: db.credentials,
     auditReader: db.auditReader,
-    resetTokens: db.resetTokens,
-    email,
     hashPassword: fakeHashPassword,
-    appBaseUrl: passwordResetEnabled ? TEST_APP_BASE_URL : undefined,
-    clock: resetClock,
   });
 
-  return { app, db, tokenService, audit, email };
+  return { app, db, tokenService, audit };
 }
 
 // For the middleware's own tests, which mint tokens directly rather than
@@ -142,7 +113,6 @@ module.exports = {
   verifyPassword,
   verifyTwoFactorCode,
   fakeHashPassword,
-  TEST_APP_BASE_URL,
   PASSWORD,
   TWO_FACTOR_CODE,
 };

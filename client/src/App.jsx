@@ -8,7 +8,6 @@ import Welcome from './pages/Welcome.jsx';
 import Login from './pages/Login.jsx';
 import SignUp from './pages/SignUp.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
-import ResetPassword from './pages/ResetPassword.jsx';
 import TwoFactorSetup from './pages/TwoFactorSetup.jsx';
 import Credentials from './pages/Credentials.jsx';
 import Documents from './pages/Documents.jsx';
@@ -21,8 +20,8 @@ import { setRedirectHandler } from './services/session.js';
 // functional-requirements.md UC-01..UC-05) plus a 404 catch-all.
 //
 // Two groups, mirroring Figure 7's navigation map: the pre-session screens
-// (login, forgot/reset) render under PublicLayout — a bare shell with no app
-// chrome — while every vault screen sits behind RequireAuth and the tabbed
+// (login, forgot-password) render under PublicLayout — a bare shell with no
+// app chrome — while every vault screen sits behind RequireAuth and the tabbed
 // Layout. The guard is what makes login actually gate the app: without a live
 // session, a protected URL redirects to /login. Vault screens themselves are
 // still inert placeholders — their behaviour is added in later PRDs.
@@ -44,7 +43,6 @@ export default function App() {
         <Route path="login" element={<Login />} />
         <Route path="signup" element={<SignUp />} />
         <Route path="forgot-password" element={<ForgotPassword />} />
-        <Route path="reset-password" element={<ResetPassword />} />
         <Route path="2fa-setup" element={<TwoFactorSetup />} />
       </Route>
 

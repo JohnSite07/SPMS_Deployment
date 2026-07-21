@@ -18,11 +18,13 @@ const { createTokenService } = require('../services/token-service');
 // session and must prove it owns the session it is ending. Listing the bare
 // path would have made logout unauthenticated, letting anyone end anyone's
 // session by guessing nothing at all.
-// The password-reset pair is public for the same reason login is: a user who
-// forgot their master password by definition holds no session token, and
-// /request is the request that would otherwise need one to explain who it's
-// for. Both are POST-scoped, not bare paths, for the same reason logout
-// isn't bare: there is no GET/DELETE on this router to accidentally expose.
+// Password reset is public for the same reason login is: a user who forgot
+// their master password by definition holds no session token, and this is
+// the request that would otherwise need one to explain who it's for.
+// POST-scoped, not a bare path, for the same reason logout isn't bare: there
+// is no GET/DELETE on this router to accidentally expose. See PRD 0020 and
+// routes/password-reset.js — identity is proven via the enrolled 2FA TOTP
+// code, not an emailed token, so there is only the one route now.
 //
 // The 2FA enrollment pair is public for the same reason: a user with no
 // second factor configured yet cannot hold a session token either (UC-01's
@@ -37,8 +39,7 @@ const { createTokenService } = require('../services/token-service');
 const PUBLIC_PATHS = Object.freeze([
   '/health',
   'POST /api/session',
-  'POST /api/password-reset/request',
-  'POST /api/password-reset/confirm',
+  'POST /api/password-reset',
   'POST /api/2fa/enroll',
   'POST /api/2fa/confirm',
   'POST /api/register',

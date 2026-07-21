@@ -3,15 +3,23 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-// The reset-request service is mocked so this suite exercises the SCREEN
-// only (PRD 0015) — the backend contract is covered by app/tests and
+// The reset service is mocked so this suite exercises the SCREEN only (PRD
+// 0020) — the backend contract is covered by app/tests and
 // client/src/services/__tests__/password-reset.test.js.
 vi.mock('../../services/password-reset', () => ({
-  requestReset: vi.fn(),
+  resetPassword: vi.fn(),
 }));
 
-import { requestReset } from '../../services/password-reset';
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return { ...actual, useNavigate: () => mockNavigate };
+});
+
+import { resetPassword } from '../../services/password-reset';
 import ForgotPassword from '../ForgotPassword.jsx';
+
+const STRONG_PASSWORD = 'StrongPass1!';
 
 function renderForgotPassword() {
   return render(
@@ -22,65 +30,170 @@ function renderForgotPassword() {
 }
 
 beforeEach(() => {
-  requestReset.mockReset();
+  resetPassword.mockReset();
+  mockNavigate.mockReset();
 });
 
 afterEach(() => {
   cleanup();
 });
 
-describe('ForgotPassword screen (PRD 0015)', () => {
-  it('renders an email field and a submit button', () => {
+describe('ForgotPassword screen (PRD 0020)', () => {
+  it('renders email, code, new password, and confirm password fields in a single form', () => {
     renderForgotPassword();
 
     expect(screen.getByLabelText(/email/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /send reset link/i })).toBeTruthy();
+    expect(screen.getByLabelText(/6-digit code/i)).toBeTruthy();
+    expect(screen.getByLabelText(/new master password/i)).toBeTruthy();
+    expect(screen.getByLabelText(/confirm new password/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /reset password/i })).toBeTruthy();
   });
 
-  it('submits the entered email to requestReset', async () => {
-    requestReset.mockResolvedValueOnce(null);
+  it('only accepts digits in the code field, capped at 6', () => {
+    renderForgotPassword();
+
+    const codeInput = screen.getByLabelText(/6-digit code/i);
+    fireEvent.change(codeInput, { target: { value: 'ab12cd34ef' } });
+
+    expect(codeInput.value).toBe('1234');
+  });
+
+  it('submits email, code, and newPassword to resetPassword', async () => {
+    resetPassword.mockResolvedValueOnce(null);
     renderForgotPassword();
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText(/new master password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
 
-    await waitFor(() => expect(requestReset).toHaveBeenCalledTimes(1));
-    expect(requestReset).toHaveBeenCalledWith({ email: 'user@example.com' });
+    await waitFor(() => expect(resetPassword).toHaveBeenCalledTimes(1));
+    expect(resetPassword).toHaveBeenCalledWith({
+      email: 'user@example.com',
+      code: '123456',
+      newPassword: STRONG_PASSWORD,
+    });
   });
 
-  it('shows the generic confirmation after a successful request', async () => {
-    requestReset.mockResolvedValueOnce(null);
+  it('rejects a weak password client-side without calling resetPassword', async () => {
     renderForgotPassword();
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText(/new master password/i), { target: { value: 'short1!' } });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: 'short1!' } });
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/at least 12 characters/i);
+    expect(resetPassword).not.toHaveBeenCalled();
+  });
+
+  it('rejects mismatched passwords client-side without calling resetPassword', async () => {
+    renderForgotPassword();
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText(/new master password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: 'DifferentPass2@' } });
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('Passwords do not match.');
+    expect(resetPassword).not.toHaveBeenCalled();
+  });
+
+  it('shows a success message and navigates to /login on a successful reset', async () => {
+    resetPassword.mockResolvedValueOnce(null);
+    renderForgotPassword();
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText(/new master password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
 
     // findByText (not role: react-bootstrap's Spinner also carries role="status"
     // while the request is in flight, so querying by role would race it).
-    const status = await screen.findByText('If an account exists for that email, a reset link has been sent.');
+    const status = await screen.findByText(/password has been reset/i);
     expect(status).toBeTruthy();
+    expect(mockNavigate).toHaveBeenCalledWith('/login');
   });
 
-  it('shows the SAME generic confirmation even when the email does not exist / the request fails', async () => {
-    // Anti-enumeration: the backend always answers 200, but even if the
-    // client call itself errors, the UI still must not reveal anything
-    // account-specific. A network failure is the one case that legitimately
-    // differs (generic retry message), which we assert separately below.
-    requestReset.mockRejectedValueOnce(new Error('network'));
+  it('shows ONE generic message for the 401 covering unknown email / no-2FA / wrong code', async () => {
+    const apiError = new Error('invalid_credentials');
+    apiError.status = 401;
+    apiError.error = 'invalid_credentials';
+    resetPassword.mockRejectedValueOnce(apiError);
     renderForgotPassword();
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'nobody@example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '000000' } });
+    fireEvent.change(screen.getByLabelText(/new master password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Something went wrong. Please try again.');
-    expect(screen.queryByText(/no account/i)).toBeNull();
-    expect(screen.queryByText(/not found/i)).toBeNull();
+    expect(alert.textContent).toBe('Invalid email, code, or account.');
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('disables submission and shows a "Sending…" state while the request is in flight', async () => {
+  it('shows the same generic 401 message regardless of which of the three causes it', async () => {
+    for (const description of ['unknown email', 'no enabled 2FA', 'wrong code']) {
+      const apiError = new Error(description);
+      apiError.status = 401;
+      apiError.error = 'invalid_credentials';
+      resetPassword.mockReset();
+      resetPassword.mockRejectedValueOnce(apiError);
+      cleanup();
+      renderForgotPassword();
+
+      fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'someone@example.com' } });
+      fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '000000' } });
+      fireEvent.change(screen.getByLabelText(/new master password/i), { target: { value: STRONG_PASSWORD } });
+      fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: STRONG_PASSWORD } });
+      fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toBe('Invalid email, code, or account.');
+    }
+  });
+
+  it('shows the specific weak_password message when the server rejects a password the client-side check missed', async () => {
+    const apiError = new Error('weak_password');
+    apiError.status = 400;
+    apiError.error = 'weak_password';
+    resetPassword.mockRejectedValueOnce(apiError);
+    renderForgotPassword();
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText(/new master password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/at least 12 characters/i);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('masks the new password by default and reveals it via the toggle', () => {
+    renderForgotPassword();
+
+    const passwordInput = screen.getByLabelText(/new master password/i);
+    expect(passwordInput.type).toBe('password');
+
+    fireEvent.click(screen.getByRole('button', { name: /show new password/i }));
+    expect(passwordInput.type).toBe('text');
+
+    fireEvent.click(screen.getByRole('button', { name: /hide new password/i }));
+    expect(passwordInput.type).toBe('password');
+  });
+
+  it('disables submission and shows a "Resetting…" state while the request is in flight', async () => {
     let resolveRequest;
-    requestReset.mockReturnValueOnce(
+    resetPassword.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveRequest = resolve;
       })
@@ -88,9 +201,12 @@ describe('ForgotPassword screen (PRD 0015)', () => {
     const { container } = renderForgotPassword();
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText(/new master password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: STRONG_PASSWORD } });
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
 
-    expect(await screen.findAllByText(/sending/i)).not.toHaveLength(0);
+    expect(await screen.findAllByText(/resetting/i)).not.toHaveLength(0);
     expect(container.querySelector('fieldset').disabled).toBe(true);
 
     resolveRequest(null);

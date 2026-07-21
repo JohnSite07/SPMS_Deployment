@@ -42,6 +42,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0011 — Design-system baseline: react-bootstrap + a single SASS token file](decisions/0011-design-system-baseline.md)
 - [0012 — Two-factor enrollment as a separate public, pre-session surface](decisions/0012-two-factor-enrollment-separate-public-surface.md)
 - [0013 — Duplicate-email disclosure on registration as a deliberate anti-enumeration exception](decisions/0013-duplicate-email-disclosure-on-registration.md)
+- [0014 — Password reset proves identity via TOTP, not an emailed link](decisions/0014-totp-based-password-reset.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment
