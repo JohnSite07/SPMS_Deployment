@@ -13,7 +13,9 @@ export default function Activity() {
   const [nextCursor, setNextCursor] = useState(null);
   const [cursorHistory, setCursorHistory] = useState([]);
   
-  const LIMIT = 20;
+  // Small enough that a page fits on screen without scrolling, which is what
+  // makes the Previous/Next controls reachable rather than below the fold.
+  const LIMIT = 7;
 
   useEffect(() => {
     let ignore = false;
