@@ -1,10 +1,12 @@
 # 0015 — Password Reset Flow (forgot-password request + reset confirm)
 
+> **Superseded by [PRD 0020](0020-totp-based-password-reset.md) (2026-07-21).** The emailed-token flow this PRD shipped never worked in the deployed environment — PRD 0016 (SMTP provisioning) never landed, so `/request`/`/confirm` ran permanently in their "disabled mode" (`503`). PRD 0020 replaces both endpoints with a single `POST /api/password-reset` verified against the user's existing TOTP 2FA code instead, removing the SMTP dependency entirely. Kept here, unedited below, as the historical record of what was built and why — see PRD 0020 for the current design and this project's "never delete, supersede instead" convention.
+
 Let a user who has forgotten their master password reset it through a single-use, time-limited email link — implemented as a **re-hash only** operation, because the vault is encrypted with the server-held AES key and never with the master password.
 
 | | |
 | --- | --- |
-| **Status** | In Progress (approved 2026-07-13) |
+| **Status** | Superseded by [0020](0020-totp-based-password-reset.md) |
 | **Date** | 2026-07-13 |
 | **Author** | Main session (orchestrator), on behalf of @Anjuuuzzz |
 
@@ -125,4 +127,4 @@ npm run lint && npm test && npm run build
 
 ## Outcome
 
-_Filled in after execution: endpoints shipped, migration applied, deviations, links to the reset ADR/runbook._
+Shipped as planned: `/request`/`/confirm`, `email-service.js`, the hash-only token store, and the `PASSWORD_RESET_TOKENS` migration were built and tested. The flow was never functional end-to-end in the deployed environment, because PRD 0016 (SMTP provisioning) was never completed — the routes ran in the documented "disabled mode" (`503`) from merge onward. On 2026-07-21, PRD [0020](0020-totp-based-password-reset.md) replaced this flow entirely with a TOTP-verified single endpoint that has no SMTP dependency; see PRD 0020 and [ADR 0014](../decisions/0014-totp-based-password-reset.md) for the replacement design and rationale. This PRD's code (`password-reset.js`'s old routes, `ResetPassword.jsx`, `password-reset-config.js`) has since been removed or rewritten; `services/email-service.js` and the `PASSWORD_RESET_TOKENS` table remain in place, unused by this flow (see PRD 0020's Out of scope).

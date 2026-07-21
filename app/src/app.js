@@ -32,30 +32,9 @@ const { createTwoFactorRoutes } = require('./routes/two-factor');
  *                      read, the other can read and cannot append. Neither
  *                      can update or delete, and no object in the process
  *                      holds both halves.
- * @param resetTokens   the password-reset-store port (see routes/
- *                      password-reset.js) — hash-only, single-use tokens.
- * @param email         a createEmailService() instance — the reset link's
- *                      only delivery path. Optional: null/absent when SMTP
- *                      is not yet provisioned (server.js's own non-fatal
- *                      catch around loadPasswordResetConfig()), in which case
- *                      routes/password-reset.js mounts its "disabled mode"
- *                      (both endpoints answer 503) instead of throwing.
- * @param hashPassword  services/password-hasher.js's hashPassword, used to
- *                      turn a reset's newPassword into a stored hash.
- * @param appBaseUrl    base URL the password-reset link is built against.
- *                      Optional for the same reason as `email` above.
- * @param resetTokenTtlMinutes  reset-token lifetime; defaults to routes/
- *                      password-reset.js's own default (30) when omitted.
- * @param clock         injectable, () => Date.now() — used ONLY for the
- *                      password-reset routes' expiry math, not for `audit`
- *                      (whose clock, if any, is already baked into the
- *                      `audit` instance passed in above). Real deployments
- *                      never override this: ports/password-reset-store.js's
- *                      consume() compares a stored expires_at against
- *                      MySQL's own NOW() (real wall-clock time), so an
- *                      offset fake clock here would desync from the DB and
- *                      make every token look expired (or never expire). Only
- *                      tests should pass one.
+ * @param hashPassword  services/password-hasher.js's hashPassword, used both
+ *                      by registration and by the password-reset route to
+ *                      turn a newPassword into a stored hash.
  */
 function createApp({
   tokenService,
@@ -66,12 +45,7 @@ function createApp({
   sessions,
   credentials,
   auditReader,
-  resetTokens,
-  email,
   hashPassword,
-  appBaseUrl,
-  resetTokenTtlMinutes,
-  clock,
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -157,26 +131,14 @@ function createApp({
 
   app.use('/api/credentials', createCredentialRoutes({ store: credentials, audit }));
 
-  // Both routes here are public too (PUBLIC_PATHS): a forgotten master
-  // password is by definition a request made with no session. Re-hash only —
-  // see routes/password-reset.js's header comment. `email`/`appBaseUrl` may
-  // both be absent (SMTP not yet provisioned) — the factory below then
-  // mounts its own "disabled mode" (503 on both routes) rather than
-  // throwing, so this app still boots and every other route above and below
-  // still serves.
+  // Public too (PUBLIC_PATHS): a forgotten master password is by definition
+  // a request made with no session. Re-hash only — see routes/
+  // password-reset.js's header comment. PRD 0020: identity is proven via the
+  // user's already-enrolled 2FA TOTP code, so this has no SMTP dependency at
+  // all — unlike the flow it replaced, there is no "disabled mode" here.
   app.use(
     '/api/password-reset',
-    createPasswordResetRoutes({
-      users,
-      resetTokens,
-      sessions,
-      audit,
-      email,
-      hashPassword,
-      appBaseUrl,
-      ttlMinutes: resetTokenTtlMinutes,
-      clock,
-    })
+    createPasswordResetRoutes({ users, sessions, audit, hashPassword })
   );
 
   // The owner's activity view: their own log, and only ever their own.

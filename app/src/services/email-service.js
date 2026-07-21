@@ -7,9 +7,19 @@ const nodemailer = require('nodemailer');
 // password-reset.js) and the zero-knowledge posture generally.
 //
 // The transport is injected, not built here: this module never reads
-// SMTP_HOST/PORT/USERNAME/PASSWORD itself (config/password-reset-config.js
-// owns that), and tests pass a fake transport with a jest.fn() `sendMail` so
-// no test ever opens a real SMTP connection.
+// SMTP_HOST/PORT/USERNAME/PASSWORD itself — a caller loads that config and
+// passes a built transport to createSmtpTransport/createEmailService — and
+// tests pass a fake transport with a jest.fn() `sendMail` so no test ever
+// opens a real SMTP connection.
+//
+// As of PRD 0020, no route in this app calls createEmailService: password
+// reset (the original caller, PRD 0015) now verifies identity via TOTP
+// instead (see routes/password-reset.js and ADR 0014) and has no SMTP
+// dependency. This module is kept, unwired, for a future feature that needs
+// to send mail — the domain model documents SecurityAlert as depending on
+// an EmailService. sendPasswordResetEmail's reset-specific wording below
+// would need generalizing (or a sibling function added) before any new
+// caller reuses this service for a different kind of email.
 
 const SUBJECT = 'Reset your SecureVault master password';
 
@@ -64,11 +74,11 @@ function createEmailService({ transport, from } = {}) {
 }
 
 /**
- * Builds the real nodemailer transport from the loaded SMTP config
- * (config/password-reset-config.js's `smtp` field). Kept separate from
- * createEmailService so server.js is the only caller that ever constructs a
- * live SMTP connection; every test constructs createEmailService directly
- * with a fake transport instead.
+ * Builds the real nodemailer transport from a loaded SMTP config (host,
+ * port, username, password). Kept separate from createEmailService so only
+ * a real caller (a future feature that wires this service up) ever
+ * constructs a live SMTP connection; every test constructs createEmailService
+ * directly with a fake transport instead.
  */
 function createSmtpTransport({ host, port, username, password } = {}) {
   return nodemailer.createTransport({

@@ -1,114 +1,86 @@
-const { URL } = require('url');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const request = require('supertest');
+const { authenticator } = require('otplib');
 const { ACTIONS } = require('../src/models/audit-entry');
+const cryptoService = require('../src/services/crypto');
 const { createFakeDatabase } = require('./helpers/fake-database');
-const { testApp, seedUser, PASSWORD, TWO_FACTOR_CODE, TEST_APP_BASE_URL } = require('./helpers/test-app');
+const { testApp, seedUser, PASSWORD, TWO_FACTOR_CODE } = require('./helpers/test-app');
 
-// PRD 0015 — the reset half of "forgotten master password". Re-hash only:
-// no vault re-encryption is exercised or expected here (see this PRD's "key
-// decision"), only USERS.master_password_hash, SESSIONS, and the audit log.
+// PRD 0020 — TOTP-based password reset, replacing PRD 0015's emailed-token
+// flow. This route verifies identity with the user's already-enrolled 2FA
+// TOTP code via the real, unmodified services/two-factor-verifier.js — not
+// through the fake verifyTwoFactorCode test-app.js wires into session-issuer
+// for login — so these tests build a genuine AES-256-GCM-encrypted TOTP
+// secret and compute real codes against it, the same pattern
+// two-factor-verifier.test.js and two-factor-routes.test.js already use.
 
-function build(dbOptions = {}) {
-  const db = createFakeDatabase({ users: [seedUser()], ...dbOptions });
-  return { ...testApp({ db }), db };
-}
+const TEST_AES_KEY = crypto.randomBytes(32);
+const originalAesKey = process.env.AES_ENCRYPTION_KEY;
 
-function extractToken(resetUrl) {
-  return new URL(resetUrl).searchParams.get('token');
-}
-
-async function requestReset(app, email, overrides = {}) {
-  await request(app)
-    .post('/api/password-reset/request')
-    .send({ email: 'owner@example.com', ...overrides });
-  const call = email.sendPasswordResetEmail.mock.calls.at(-1);
-  return extractToken(call[0].resetUrl);
-}
+beforeAll(() => {
+  process.env.AES_ENCRYPTION_KEY = TEST_AES_KEY.toString('base64');
+});
+afterAll(() => {
+  process.env.AES_ENCRYPTION_KEY = originalAesKey;
+});
 
 const NEW_PASSWORD = 'New-Correct9!';
 
-describe('POST /api/password-reset/request', () => {
+// A real TOTP secret + its current code, packaged as the encryptedSecret
+// shape ports/users.js attaches to a User (see two-factor-verifier.js's own
+// param doc) — this is what makes the route's direct call into the real
+// verifier succeed or fail exactly as it would in production.
+function realTotpConfig() {
+  const secret = authenticator.generateSecret();
+  return {
+    secret,
+    code: authenticator.generate(secret),
+    twoFactorConfig: {
+      method: 'TOTP',
+      enabled: true,
+      encryptedSecret: cryptoService.encrypt(secret),
+    },
+  };
+}
+
+function buildWithTotp() {
+  const totp = realTotpConfig();
+  const db = createFakeDatabase({
+    users: [seedUser({ twoFactorConfig: totp.twoFactorConfig })],
+  });
+  return { ...testApp({ db }), db, totp };
+}
+
+function buildWithNoTwoFactor() {
+  const db = createFakeDatabase({ users: [seedUser({ twoFactorConfig: undefined })] });
+  return { ...testApp({ db }), db };
+}
+
+const resetRequest = (app, overrides = {}) =>
+  request(app)
+    .post('/api/password-reset')
+    .send({ email: 'owner@example.com', newPassword: NEW_PASSWORD, ...overrides });
+
+describe('POST /api/password-reset', () => {
   it('is reachable without a bearer token', async () => {
-    const { app } = build();
-    const res = await request(app)
-      .post('/api/password-reset/request')
-      .send({ email: 'owner@example.com' });
+    const { app, totp } = buildWithTotp();
+    const res = await resetRequest(app, { code: totp.code });
     expect(res.status).not.toBe(401);
   });
 
-  it('answers 200 { ok: true } and emails a link for a known email', async () => {
-    const { app, email } = build();
-
-    const res = await request(app)
-      .post('/api/password-reset/request')
-      .send({ email: 'owner@example.com' });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true });
-    expect(email.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
-
-    const { to, resetUrl } = email.sendPasswordResetEmail.mock.calls[0][0];
-    expect(to).toBe('owner@example.com');
-    expect(resetUrl.startsWith(TEST_APP_BASE_URL)).toBe(true);
-    expect(extractToken(resetUrl)).toEqual(expect.any(String));
-  });
-
-  it('answers the identical 200 body for an unknown email — no enumeration', async () => {
-    const { app, email } = build();
-
-    const res = await request(app)
-      .post('/api/password-reset/request')
-      .send({ email: 'nobody@example.com' });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true });
-    expect(email.sendPasswordResetEmail).not.toHaveBeenCalled();
-  });
-
-  it('answers 200 identically with no email at all in the body', async () => {
-    const { app, email } = build();
-    const res = await request(app).post('/api/password-reset/request').send({});
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true });
-    expect(email.sendPasswordResetEmail).not.toHaveBeenCalled();
-  });
-
-  it('stores only the token hash, never the raw token', async () => {
-    const { app, db } = build();
-    await request(app).post('/api/password-reset/request').send({ email: 'owner@example.com' });
-
-    expect(db.state.resetTokens.size).toBe(1);
-    const [key] = db.state.resetTokens.keys();
-    // A hex-encoded 32-byte SHA-256 digest — never a plausible raw token.
-    expect(key).toMatch(/^[0-9a-f]{64}$/);
-  });
-});
-
-describe('POST /api/password-reset/confirm', () => {
-  it('is reachable without a bearer token', async () => {
-    const { app, email } = build();
-    const token = await requestReset(app, email);
-
-    const res = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token, newPassword: NEW_PASSWORD });
-    expect(res.status).not.toBe(401);
-  });
-
-  it('sets the new hash, revokes every session, and logs MASTER_PASSWORD_CHANGED', async () => {
-    const { app, db, email } = build();
+  it('accepts a correct email, current TOTP code, and strong password: updates the hash, revokes sessions, and audits the change', async () => {
+    const { app, db, totp } = buildWithTotp();
 
     const login = await request(app)
       .post('/api/session')
       .send({ email: 'owner@example.com', password: PASSWORD, code: TWO_FACTOR_CODE });
+    expect(login.status).toBe(201);
     const auth = { Authorization: `Bearer ${login.body.token}` };
     expect((await request(app).get('/api/session').set(auth)).status).toBe(200);
 
-    const token = await requestReset(app, email);
-    const res = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token, newPassword: NEW_PASSWORD });
-
+    const res = await resetRequest(app, { code: totp.code });
     expect(res.status).toBe(204);
 
     // Prior session revoked.
@@ -116,6 +88,12 @@ describe('POST /api/password-reset/confirm', () => {
 
     // Audit entry recorded.
     expect(db.actions()).toContain(ACTIONS.MASTER_PASSWORD_CHANGED);
+
+    // The failed-attempt counter is clean immediately after a successful
+    // reset — checked before any further login attempt, since a *subsequent*
+    // wrong-password attempt against the old password is its own, separate
+    // failure that session.js is expected to count.
+    expect(db.state.users.get('user-42').failedAttempts).toBe(0);
 
     // New password logs in; old password no longer does.
     const withNewPassword = await request(app)
@@ -129,46 +107,96 @@ describe('POST /api/password-reset/confirm', () => {
     expect(withOldPassword.status).toBe(401);
   });
 
-  it('rejects a token that was never issued, changing nothing', async () => {
-    const { app, db } = build();
+  it('answers the same generic 401 for an unknown email, recording nothing', async () => {
+    const { app, db } = buildWithTotp();
 
-    const res = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token: 'never-issued-token', newPassword: NEW_PASSWORD });
+    const res = await resetRequest(app, { email: 'nobody@example.com', code: '000000' });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'invalid_credentials' });
+    expect(db.state.users.get('user-42').failedAttempts).toBe(0);
     expect(db.actions()).not.toContain(ACTIONS.MASTER_PASSWORD_CHANGED);
   });
 
-  it('rejects an already-used token on the second attempt', async () => {
-    const { app, email } = build();
-    const token = await requestReset(app, email);
+  it('answers the same generic 401 for an account with no enabled 2FA, recording nothing', async () => {
+    const { app, db } = buildWithNoTwoFactor();
 
-    const first = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token, newPassword: NEW_PASSWORD });
-    expect(first.status).toBe(204);
+    const res = await resetRequest(app, { code: '000000' });
 
-    const second = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token, newPassword: 'Another-Correct9!' });
-    expect(second.status).toBe(400);
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'invalid_credentials' });
+    expect(db.state.users.get('user-42').failedAttempts).toBe(0);
+    expect(db.actions()).not.toContain(ACTIONS.MASTER_PASSWORD_CHANGED);
   });
 
-  it('rejects an expired token, changing nothing', async () => {
-    // A resetClock stuck an hour in the past: the minted token's expiresAt
-    // (resetClock() + ttlMinutes) is already behind real Date.now() by the
-    // time /confirm runs.
-    const anHourAgo = Date.now() - 60 * 60 * 1000;
-    const db = createFakeDatabase({ users: [seedUser()] });
-    const { app, email } = testApp({ db, resetClock: () => anHourAgo });
+  it('answers the same generic 401 for a wrong code, and counts it toward the lockout', async () => {
+    const { app, db } = buildWithTotp();
 
-    const token = await requestReset(app, email);
-    const res = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token, newPassword: NEW_PASSWORD });
+    const res = await resetRequest(app, { code: '000000' });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'invalid_credentials' });
+    expect(db.state.users.get('user-42').failedAttempts).toBe(1);
+    expect(db.actions()).not.toContain(ACTIONS.MASTER_PASSWORD_CHANGED);
+  });
+
+  it('locks the account for 15 minutes after five wrong codes — the endpoint\'s core brute-force protection', async () => {
+    const { app, db } = buildWithTotp();
+
+    for (let i = 0; i < 5; i += 1) {
+      await resetRequest(app, { code: '000000' });
+    }
+
+    expect(db.state.users.get('user-42').isLocked).toBe(true);
+    expect(db.state.users.get('user-42').failedAttempts).toBe(5);
+  });
+
+  // infra-reviewer sign-off blocker: once locked, a further wrong-code
+  // attempt must not call recordFailedAttempt again — against the real port
+  // (ports/users.js) that call re-arms lockout_until another 15 minutes into
+  // the future every time, which would keep a real account locked
+  // indefinitely under repeated guessing. Asserted here via the fake store:
+  // the failure counter must not move past 5, and recordFailedAttempt itself
+  // must not be invoked for the 6th attempt.
+  it('does not extend the lockout window on wrong-code attempts once already locked', async () => {
+    const { app, db } = buildWithTotp();
+
+    for (let i = 0; i < 5; i += 1) {
+      await resetRequest(app, { code: '000000' });
+    }
+    expect(db.state.users.get('user-42').isLocked).toBe(true);
+    expect(db.state.users.get('user-42').failedAttempts).toBe(5);
+
+    const recordFailedAttempt = jest.spyOn(db.users, 'recordFailedAttempt');
+
+    const res = await resetRequest(app, { code: '000000' });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'invalid_credentials' });
+    expect(recordFailedAttempt).not.toHaveBeenCalled();
+    // Unmoved — a real lockout_until re-armed by another recordFailedAttempt
+    // call is exactly what this test would otherwise miss.
+    expect(db.state.users.get('user-42').failedAttempts).toBe(5);
+
+    recordFailedAttempt.mockRestore();
+  });
+
+  // Matches session-issuer.js's verifyMasterPassword: a locked account is
+  // refused outright, before any code is even checked — a correct TOTP code
+  // does not bypass an active lockout, the same as a correct password does
+  // not bypass one at login.
+  it('denies a correct code against an already-locked account, same generic shape', async () => {
+    const { app, db, totp } = buildWithTotp();
+
+    for (let i = 0; i < 5; i += 1) {
+      await resetRequest(app, { code: '000000' });
+    }
+    expect(db.state.users.get('user-42').isLocked).toBe(true);
+
+    const res = await resetRequest(app, { code: totp.code });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'invalid_credentials' });
     expect(db.actions()).not.toContain(ACTIONS.MASTER_PASSWORD_CHANGED);
   });
 
@@ -179,108 +207,69 @@ describe('POST /api/password-reset/confirm', () => {
     ['no number', 'NoNumbersHere!Aa'],
     ['no symbol', 'NoSymbolHereAtAll99'],
   ])('rejects a weak newPassword (%s), changing nothing', async (_name, weakPassword) => {
-    const { app, db, email } = build();
-    const token = await requestReset(app, email);
+    const { app, db, totp } = buildWithTotp();
 
-    const res = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token, newPassword: weakPassword });
+    const res = await resetRequest(app, { code: totp.code, newPassword: weakPassword });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'weak_password' });
     expect(db.actions()).not.toContain(ACTIONS.MASTER_PASSWORD_CHANGED);
 
-    // The token must still be usable with a strong password afterward — a
-    // rejected weak attempt must not have consumed it.
-    const retry = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token, newPassword: NEW_PASSWORD });
-    expect(retry.status).toBe(204);
-  });
-
-  // Business rule 7's atomicity, exercised the same way session-routes.test.js
-  // exercises it for login: a write that cannot be logged must not stand.
-  it('rolls back the hash change, session revocation, and token consumption when the audit append fails', async () => {
-    const db = createFakeDatabase({
-      users: [seedUser()],
-      failAppendOn: ACTIONS.MASTER_PASSWORD_CHANGED,
-    });
-    const { app, email } = testApp({ db });
-    const token = await requestReset(app, email);
-
-    const res = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token, newPassword: NEW_PASSWORD });
-
-    expect(res.status).toBe(500);
-    expect(db.actions()).not.toContain(ACTIONS.MASTER_PASSWORD_CHANGED);
-
-    // The old password still works — the hash was rolled back.
+    // The old password must still work — a rejected weak attempt must not
+    // have consumed the (single-use-free) TOTP code's proof of anything else.
     const withOldPassword = await request(app)
       .post('/api/session')
       .send({ email: 'owner@example.com', password: PASSWORD, code: TWO_FACTOR_CODE });
     expect(withOldPassword.status).toBe(201);
   });
 
-  it('rejects a missing token or missing newPassword without touching the store', async () => {
-    const { app, db } = build();
+  // Business rule 7's atomicity, exercised the same way session-routes.test.js
+  // exercises it for login: a write that cannot be logged must not stand.
+  it('rolls back the hash change and session revocation when the audit append fails', async () => {
+    const totp = realTotpConfig();
+    const db = createFakeDatabase({
+      users: [seedUser({ twoFactorConfig: totp.twoFactorConfig })],
+      failAppendOn: ACTIONS.MASTER_PASSWORD_CHANGED,
+    });
+    const { app } = testApp({ db });
 
-    const noToken = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ newPassword: NEW_PASSWORD });
-    expect(noToken.status).toBe(400);
+    const res = await resetRequest(app, { code: totp.code });
 
-    const noPassword = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token: 'whatever' });
-    expect(noPassword.status).toBe(400);
+    expect(res.status).toBe(500);
+    expect(db.actions()).not.toContain(ACTIONS.MASTER_PASSWORD_CHANGED);
 
-    expect(db.actions()).toEqual([]);
+    const withOldPassword = await request(app)
+      .post('/api/session')
+      .send({ email: 'owner@example.com', password: PASSWORD, code: TWO_FACTOR_CODE });
+    expect(withOldPassword.status).toBe(201);
   });
 });
 
-// Deploy-safe lazy config (PRD 0015): when loadPasswordResetConfig() fails
-// (SMTP not provisioned yet), server.js omits `email`/`appBaseUrl` and the
-// rest of the app must still boot. routes/password-reset.js answers 503 on
-// both endpoints instead of throwing at construction.
-describe('disabled mode (SMTP not provisioned)', () => {
-  function buildDisabled(dbOptions = {}) {
-    const db = createFakeDatabase({ users: [seedUser()], ...dbOptions });
-    return { ...testApp({ db, passwordResetEnabled: false }), db };
-  }
+// This route touches both a plaintext newPassword and a TOTP code — neither
+// may ever reach a log line.
+describe('the newPassword and TOTP code are never logged', () => {
+  it('never calls any console method across a full run of successes and failures', async () => {
+    const consoleSpies = ['log', 'info', 'warn', 'error', 'debug'].map((method) =>
+      jest.spyOn(console, method).mockImplementation(() => {})
+    );
 
-  it('still constructs the app and serves unrelated routes', async () => {
-    // The whole point: a missing SMTP integration must not take the service
-    // down. If createApp() threw, testApp() would throw here and the suite
-    // would error rather than reach the assertion below.
-    const { app } = buildDisabled();
-    expect((await request(app).get('/health')).status).toBe(200);
+    try {
+      const { app, totp } = buildWithTotp();
+      await resetRequest(app, { code: 'wrong' });
+      await resetRequest(app, { code: totp.code, newPassword: 'weak' });
+      await resetRequest(app, { code: totp.code });
+
+      for (const spy of consoleSpies) {
+        expect(spy).not.toHaveBeenCalled();
+      }
+    } finally {
+      consoleSpies.forEach((spy) => spy.mockRestore());
+    }
   });
 
-  it('answers 503 on /request and mints no token', async () => {
-    const { app, db } = buildDisabled();
-    const res = await request(app)
-      .post('/api/password-reset/request')
-      .send({ email: 'owner@example.com' });
-
-    expect(res.status).toBe(503);
-    expect(res.body).toEqual({ error: 'service_unavailable' });
-    expect(db.state.resetTokens.size).toBe(0);
-  });
-
-  it('answers 503 on /confirm and changes nothing', async () => {
-    const { app, db } = buildDisabled();
-    const res = await request(app)
-      .post('/api/password-reset/confirm')
-      .send({ token: 'anything', newPassword: NEW_PASSWORD });
-
-    expect(res.status).toBe(503);
-    expect(res.body).toEqual({ error: 'service_unavailable' });
-    expect(db.actions()).not.toContain(ACTIONS.MASTER_PASSWORD_CHANGED);
-  });
-
-  it('is still public (503, not 401) when disabled', async () => {
-    const { app } = buildDisabled();
-    const res = await request(app).post('/api/password-reset/request').send({});
-    expect(res.status).toBe(503);
+  it('source file contains no console.* calls', () => {
+    const file = path.join(__dirname, '..', 'src', 'routes', 'password-reset.js');
+    const contents = fs.readFileSync(file, 'utf8');
+    expect(contents).not.toMatch(/console\.(log|info|warn|error|debug)/);
   });
 });
