@@ -15,6 +15,8 @@ Encryption is applied at the application layer and at rest, so the platform stor
 
 This posture is reinforced by the deployment's least-privilege boundaries (private DB, separate service accounts) described below.
 
+The client-side key derivation and encryption that makes this real (rather than assumed) — direct KDF from the master password, an email-derived salt, and the resulting key lifecycle — is recorded in [ADR 0015](../decisions/0015-vault-key-derivation-from-master-password.md).
+
 ## System context (boundary)
 
 External entities exchanging data with the system (M3 Level-0 DFD):

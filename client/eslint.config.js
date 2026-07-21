@@ -24,6 +24,14 @@ export default [
         Response: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        // Web Crypto API (vault-crypto.js, PRD 0019) plus the base64 /
+        // text-codec globals it needs — all browser (and Node >=20) builtins,
+        // not restricted by the fetch/web-storage rules below.
+        crypto: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
+        btoa: 'readonly',
+        atob: 'readonly',
       },
     },
     settings: {

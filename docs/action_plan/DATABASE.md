@@ -514,10 +514,21 @@ SELECT vi.item_id, vi.vault_id, vi.title, vi.created_at, vi.updated_at,
        c.url, c.username, c.encrypted_password, c.password_iv, c.password_tag, c.last_changed
   FROM VAULT_ITEMS vi JOIN CREDENTIALS c ON c.item_id = vi.item_id
  WHERE vi.item_id = ?;
--- List all credentials in a vault
-SELECT vi.item_id, vi.title, c.url, c.username, c.last_changed
-  FROM VAULT_ITEMS vi JOIN CREDENTIALS c ON c.item_id = vi.item_id
- WHERE vi.vault_id = ? ORDER BY vi.title;
+-- List all credentials for a user (PRD 0019, GET /api/credentials). Filtered
+-- through VAULTS.user_id -- same ownership join as the single-item read above,
+-- not a caller-supplied vault_id -- so business rule 6 holds for the list
+-- endpoint too (app/src/ports/credentials.js's list()/OWNED_ITEMS_QUERY).
+-- Ordered newest-updated-first for the vault list UI, not alphabetically:
+-- this replaces an earlier catalogue example that ordered by vi.title and
+-- filtered by vault_id directly, which never matched what the shipped code
+-- does or needs.
+SELECT vi.item_id, v.user_id, vi.title, vi.created_at, vi.updated_at,
+       c.url, c.username, c.encrypted_password
+  FROM VAULT_ITEMS vi
+  JOIN CREDENTIALS c ON c.item_id = vi.item_id
+  JOIN VAULTS v ON v.vault_id = vi.vault_id
+ WHERE v.user_id = ?
+ ORDER BY vi.updated_at DESC;
 -- Rotate the password (new ciphertext/iv/tag)
 UPDATE CREDENTIALS
    SET encrypted_password = ?, password_iv = ?, password_tag = ?, last_changed = CURRENT_TIMESTAMP

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { request, get, ApiError } from '../api-client.js';
+import { request, get, patch, ApiError } from '../api-client.js';
 import * as store from '../token-store.js';
 import { setRedirectHandler, cancelAutoLock } from '../session.js';
 
@@ -76,6 +76,19 @@ describe('api-client request', () => {
   it('returns null for a 204 with no body', async () => {
     globalThis.fetch.mockResolvedValue(new Response(null, { status: 204 }));
     await expect(request('DELETE', '/session')).resolves.toBeNull();
+  });
+
+  // PRD 0019: routes/credentials.js's edit route is a PATCH, not a PUT --
+  // this wrapper must actually send that verb.
+  it('patch sends a PATCH request with a JSON body', async () => {
+    globalThis.fetch.mockResolvedValue(response({ ok: true }));
+
+    await patch('/credentials/i1', { title: 'Renamed' });
+
+    const [url, opts] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('/api/credentials/i1');
+    expect(opts.method).toBe('PATCH');
+    expect(JSON.parse(opts.body)).toEqual({ title: 'Renamed' });
   });
 
   it('ends the session on a 401 that means the session is over', async () => {
