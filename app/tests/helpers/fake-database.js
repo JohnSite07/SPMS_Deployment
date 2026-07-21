@@ -96,6 +96,15 @@ function createFakeDatabase({
       const credential = state.credentials.get(itemId);
       return credential && credential.userId === userId ? { ...credential } : null;
     },
+    // PRD 0019. Newest-updated-first, mirroring ports/credentials.js's real
+    // `ORDER BY vi.updated_at DESC`; filtered to the caller's own rows only
+    // (business rule 6), same as get().
+    async list({ userId }) {
+      return [...state.credentials.values()]
+        .filter((c) => c.userId === userId)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        .map((c) => ({ ...c }));
+    },
     async update(tx, { userId, itemId, patch }) {
       const credential = state.credentials.get(itemId);
       if (!credential || credential.userId !== userId) {

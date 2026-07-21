@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { login, logout, isAuthenticated } from '../auth-service.js';
 import * as store from '../token-store.js';
+import * as vaultKeyStore from '../vault-key-store.js';
 import { cancelAutoLock } from '../session.js';
 
 function response(body, { status = 200, headers = {} } = {}) {
@@ -11,6 +12,7 @@ function response(body, { status = 200, headers = {} } = {}) {
 
 beforeEach(() => {
   store.clear();
+  vaultKeyStore.clear();
   cancelAutoLock();
   globalThis.fetch = vi.fn();
 });
@@ -58,6 +60,24 @@ describe('auth-service', () => {
     expect(store.getToken()).toBe('tok-1');
   });
 
+  // PRD 0019: a successful login also derives and stores the vault's
+  // AES-256-GCM key from the master password it already has in scope.
+  it('login derives and stores a usable vault key from the master password', async () => {
+    const future = new Date(Date.now() + 600000).toISOString();
+    globalThis.fetch
+      .mockResolvedValueOnce(response({ token: 'tok-1', sessionId: 'sess-9' }, { status: 201 }))
+      .mockResolvedValueOnce(
+        response({ userId: 'u1', sessionId: 'sess-9', expiresAt: future }, { headers: { 'X-Session-Expires-At': future } })
+      );
+
+    expect(vaultKeyStore.hasVaultKey()).toBe(false);
+
+    await login({ email: 'a@b.co', password: 'correct-horse-battery', code: '123456' });
+
+    expect(vaultKeyStore.hasVaultKey()).toBe(true);
+    expect(vaultKeyStore.getVaultKey().extractable).toBe(false);
+  });
+
   it('logout calls DELETE and clears the token', async () => {
     store.setToken('tok-1');
     globalThis.fetch.mockResolvedValue(new Response(null, { status: 204 }));
@@ -76,5 +96,17 @@ describe('auth-service', () => {
 
     await expect(logout()).resolves.toBeUndefined();
     expect(store.hasToken()).toBe(false);
+  });
+
+  // PRD 0019: logout must also clear the vault key -- it does not route
+  // through session.js's endSession(), so it needs its own clear() call.
+  it('logout clears the vault key alongside the session token', async () => {
+    store.setToken('tok-1');
+    vaultKeyStore.setVaultKey({ algorithm: { name: 'AES-GCM' } });
+    globalThis.fetch.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await logout();
+
+    expect(vaultKeyStore.hasVaultKey()).toBe(false);
   });
 });

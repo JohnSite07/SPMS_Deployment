@@ -43,6 +43,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0012 — Two-factor enrollment as a separate public, pre-session surface](decisions/0012-two-factor-enrollment-separate-public-surface.md)
 - [0013 — Duplicate-email disclosure on registration as a deliberate anti-enumeration exception](decisions/0013-duplicate-email-disclosure-on-registration.md)
 - [0014 — Password reset proves identity via TOTP, not an emailed link](decisions/0014-totp-based-password-reset.md)
+- [0015 — Vault-key derivation: direct KDF from the master password, email-derived salt](decisions/0015-vault-key-derivation-from-master-password.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment

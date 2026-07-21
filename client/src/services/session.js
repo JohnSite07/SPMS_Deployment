@@ -3,6 +3,7 @@
 // avoids an import cycle (api-client -> session -> token-store).
 
 import * as store from './token-store';
+import * as vaultKeyStore from './vault-key-store';
 
 // The app registers a real redirect (React Router navigate) via
 // setRedirectHandler; the default no-op keeps unit tests and non-router
@@ -20,6 +21,11 @@ export function setRedirectHandler(fn) {
 export function endSession() {
   cancelAutoLock();
   store.clear();
+  // PRD 0019: clear the derived vault key here too, so a 401-triggered
+  // session end and the auto-lock timer (this function's other two callers)
+  // both actually lock the vault, not just end the session token — re-
+  // entering the master password is required to derive a usable key again.
+  vaultKeyStore.clear();
   redirect();
 }
 

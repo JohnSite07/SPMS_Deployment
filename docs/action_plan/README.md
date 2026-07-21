@@ -26,7 +26,7 @@ A PRD must be **Approved** by the user before execution starts. Once executed, i
 | [0016](0016-smtp-provisioning-for-password-reset.md) | SMTP Provisioning for Password-Reset Email (DevOps hand-off) | Draft — no longer blocking password reset (see PRD) |
 | [0017](0017-two-factor-enrollment.md) | Two-Factor Enrollment (TOTP setup + confirm) | Done |
 | [0018](0018-welcome-and-registration.md) | Welcome/Landing Page & Self-Service Account Registration | Done |
-| [0019](0019-credential-vault-ui-and-encryption.md) | Credential Vault: Client-Side Encryption + List/Add/View/Edit/Delete UI | Draft (awaiting approval) |
+| [0019](0019-credential-vault-ui-and-encryption.md) | Credential Vault: Client-Side Encryption + List/Add/View/Edit/Delete UI | Done |
 | [0020](0020-totp-based-password-reset.md) | TOTP-Based Password Reset (replaces the email-link flow) | Done |
 
 Execution order: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 (0002 and 0003 are independent of each other; the rest are sequential). Each PRD is executed only after user approval, and each ends with an infra-reviewer pass and its documentation deliverables.

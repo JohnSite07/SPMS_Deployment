@@ -4,7 +4,7 @@ Build the actual zero-knowledge encryption layer (deferred by every prior PRD) a
 
 | | |
 | --- | --- |
-| **Status** | Draft (awaiting approval) |
+| **Status** | Done |
 | **Date** | 2026-07-21 |
 | **Author** | Main session (orchestrator), on behalf of @Anjuuuzzz — scope drawn from Jira SCRUM-50 (subtasks SCRUM-113–118, 121) |
 
@@ -135,4 +135,25 @@ npm run lint && npm test && npm run build
 
 ## Outcome
 
-_Filled in after execution: what shipped, deviations, links to any resulting doc updates._
+Shipped as scoped, security-reviewed, and signed off. Approved 2026-07-21 with the password-reset consequence explicitly accepted (see the warning section above) — that acceptance stands as the final, permanent posture for this PRD, not a placeholder.
+
+**What shipped, matching Scope exactly:**
+
+- Backend: `GET /api/credentials` (`app/src/routes/credentials.js`) + `list({ userId })` (`app/src/ports/credentials.js`), reusing the existing `VAULT_ITEMS`/`CREDENTIALS`/`VAULTS` join and business-rule-6 ownership filter, ordered `vi.updated_at DESC`. The pre-existing add/get/update/delete routes (PRD 0008) were untouched.
+- Frontend: `client/src/services/vault-crypto.js` (new) — `deriveVaultKey`/`encryptField`/`decryptField`, PBKDF2-SHA-256 → non-extractable AES-256-GCM `CryptoKey`, email-derived deterministic salt. `client/src/services/vault-key-store.js` (new, in-memory only, mirrors `token-store.js`). Wired into `auth-service.js`'s `login()` and `two-factor-service.js`'s `confirmTwoFactor()` (derive+store), and cleared independently in both `auth-service.js`'s `logout()` and `session.js`'s `endSession()` — `logout()` does not route through `endSession()`, so both needed the fix, each verified as the only two session-ending paths. `client/src/pages/Credentials.jsx` fully rebuilt (list/add/view/edit/delete, reusing `TwoFactorSetup.jsx`'s mask/reveal/copy-with-30s-clear pattern). New `client/src/services/credentials-service.js`. `api-client.js` gained a `patch()` export.
+- Tests: app 542 tests / 541 passing / 1 pre-existing skip (unrelated to this PRD); client 101 tests passing, lint/build clean, both sides green per the Scripts/commands above.
+
+**Deviations from plan — both refinements caught in the Step 3 security-review pass, not scope changes:**
+
+1. **KDF iteration count correction.** The first implementation cited "≥210,000 iterations per OWASP guidance" (as written in this PRD's own Scope bullet) and used that figure. Review found 210,000 is OWASP's current recommendation for PBKDF2-HMAC-**SHA-512**, not SHA-256 — a different hash width with a different cost curve. This implementation derives with SHA-256, whose corresponding OWASP figure is **600,000** iterations. Using 210,000 here would have been a real, quantifiable KDF weakening (less than half the recommended work factor for the hash actually in use), not a rounding difference. Fixed by correcting both the iteration constant and the citation in `vault-crypto.js`'s header comment to 600,000/SHA-256. Verified independently by the reviewer, not just re-reported by the implementer. Recorded as a parameter in [ADR 0015](../decisions/0015-vault-key-derivation-from-master-password.md), flagged there as something to revisit if OWASP guidance moves again — not treated as a permanent constant.
+2. **List-endpoint audit gap closed.** The first cut of `GET /api/credentials` wrote **zero** audit entries, reasoned as "listing is routine navigation, not a deliberate reveal, and per-item entries would just stretch UC-03's granularity." Review agreed with that reasoning against "one entry per item" but not against "zero, full stop": a stolen bearer token could pull every credential's ciphertext in one unlogged call, leaving no forensic trail that a bulk read ever happened. Fixed by adding a new, deliberately distinct closed-vocabulary action, `ACTIONS.CREDENTIALS_LISTED` (`app/src/models/audit-entry.js`), written exactly once per `GET /api/credentials` call regardless of item count — no per-item noise on routine navigation, no zero-trail bulk read either. This is additive to the audit-entry vocabulary, not a change to `CREDENTIAL_RETRIEVED`'s existing meaning.
+
+Both fixes were re-verified by the reviewer directly (re-ran the affected test suites rather than trusting reported pass/fail numbers) before sign-off.
+
+**Resulting documentation (this pass):**
+
+- [ADR 0015 — Vault-key derivation from the master password](../decisions/0015-vault-key-derivation-from-master-password.md) — the durable decision record for direct KDF vs. wrapped key, the email-derived salt, the accepted password-reset consequence, the PBKDF2 parameters, non-extractable-key defense-in-depth, and the key lifecycle.
+- [`docs/action_plan/DATABASE.md`](DATABASE.md)'s application query catalogue — the CREDENTIALS listing example corrected to match the actual shipped query shape (ownership join through `VAULTS.user_id`, `ORDER BY vi.updated_at DESC`), reconciling a discrepancy the catalogue had against `ports/credentials.js`'s code (source of truth).
+- `docs/architecture/overview.md` and `docs/architecture/domain-model.md` reviewed; both already describe the target state this PRD implements. See the documentation-keeper pass notes for the small additions made (a pointer to ADR 0015 from each).
+
+**Open items carried forward, not resolved by this PRD (unchanged from Scope's Out-of-scope list):** the password-reset-orphans-vault-data consequence (accepted, not fixed), the email-derived-salt-breaks-on-email-change simplification, `SecureDocument`/document upload, the password generator UI, and password health/reuse analysis. The pre-existing `password_iv`/`password_tag` (and `SECURE_DOCUMENTS`' `file_iv`/`file_tag`) unused-placeholder-column gap from PRD 0009/0014 is also untouched — this PRD made no schema change and `ports/credentials.js`'s existing comment on those placeholders still accurately describes the reconciliation gap as of this Outcome note.

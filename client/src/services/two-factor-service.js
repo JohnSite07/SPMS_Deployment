@@ -7,6 +7,8 @@
 
 import { post, get } from './api-client';
 import * as store from './token-store';
+import * as vaultKeyStore from './vault-key-store';
+import { deriveVaultKey } from './vault-crypto';
 
 // POST /api/2fa/enroll — re-verifies the master password (same generic 401
 // as login) and, for a user with no enabled 2FA yet, returns a freshly
@@ -33,6 +35,16 @@ export async function confirmTwoFactor({ email, password, code, deviceToken } = 
     await get('/session');
   } catch {
     // Token is valid; the auto-lock arms on the next authenticated call.
+  }
+  // PRD 0019: confirming 2FA completes a login exactly like POST /api/session
+  // does, so it derives and stores the vault key the same way login() in
+  // auth-service.js does — see that function's comment for why a failure
+  // here doesn't undo an otherwise-successful login.
+  try {
+    const vaultKey = await deriveVaultKey(password, email);
+    vaultKeyStore.setVaultKey(vaultKey);
+  } catch {
+    // See above: login has already succeeded, so this is not fatal here.
   }
   return { sessionId };
 }

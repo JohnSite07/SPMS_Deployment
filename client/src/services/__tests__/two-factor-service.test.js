@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { enrollTwoFactor, confirmTwoFactor } from '../two-factor-service.js';
 import * as store from '../token-store.js';
+import * as vaultKeyStore from '../vault-key-store.js';
 import { cancelAutoLock } from '../session.js';
 
 function response(body, { status = 200, headers = {} } = {}) {
@@ -11,6 +12,7 @@ function response(body, { status = 200, headers = {} } = {}) {
 
 beforeEach(() => {
   store.clear();
+  vaultKeyStore.clear();
   cancelAutoLock();
   globalThis.fetch = vi.fn();
 });
@@ -92,5 +94,23 @@ describe('two-factor-service', () => {
       error: 'invalid_credentials',
     });
     expect(store.hasToken()).toBe(false);
+  });
+
+  // PRD 0019: confirming 2FA also completes a login, so it derives and
+  // stores a vault key exactly as auth-service.js's login() does.
+  it('confirmTwoFactor derives and stores a usable vault key', async () => {
+    const future = new Date(Date.now() + 600000).toISOString();
+    globalThis.fetch
+      .mockResolvedValueOnce(response({ token: 'tok-1', sessionId: 'sess-9' }, { status: 201 }))
+      .mockResolvedValueOnce(
+        response({ userId: 'u1', sessionId: 'sess-9', expiresAt: future }, { headers: { 'X-Session-Expires-At': future } })
+      );
+
+    expect(vaultKeyStore.hasVaultKey()).toBe(false);
+
+    await confirmTwoFactor({ email: 'a@b.co', password: 'correct-horse-battery', code: '123456' });
+
+    expect(vaultKeyStore.hasVaultKey()).toBe(true);
+    expect(vaultKeyStore.getVaultKey().extractable).toBe(false);
   });
 });
