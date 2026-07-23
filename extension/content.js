@@ -20,15 +20,17 @@ function detectAndFillForms() {
         
         passwordInputs.forEach((pwdInput) => {
           pwdInput.value = cred.password;
-          pwdInput.dispatchEvent(new Event('input', { bubbles: true })); // trigger React/Vue handlers
+          pwdInput.dispatchEvent(new Event('input', { bubbles: true }));
+          pwdInput.dispatchEvent(new Event('change', { bubbles: true }));
 
           // Try to find a username input nearby
-          const form = pwdInput.closest('form');
+          const form = pwdInput.closest('form') || document;
           if (form) {
-            const userInput = form.querySelector('input[type="text"], input[type="email"]');
+            const userInput = form.querySelector('input:not([type="password"]):not([type="hidden"]):not([type="submit"])');
             if (userInput && cred.username) {
               userInput.value = cred.username;
               userInput.dispatchEvent(new Event('input', { bubbles: true }));
+              userInput.dispatchEvent(new Event('change', { bubbles: true }));
             }
           }
         });
@@ -88,14 +90,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     passwordInputs.forEach((pwdInput) => {
       pwdInput.value = cred.password;
       pwdInput.dispatchEvent(new Event('input', { bubbles: true }));
+      pwdInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-      const form = pwdInput.closest('form');
+      const form = pwdInput.closest('form') || document;
       if (form) {
         // More robust username input finding
         const userInput = form.querySelector('input:not([type="password"]):not([type="hidden"]):not([type="submit"])');
         if (userInput && cred.username) {
           userInput.value = cred.username;
           userInput.dispatchEvent(new Event('input', { bubbles: true }));
+          userInput.dispatchEvent(new Event('change', { bubbles: true }));
         }
       }
     });
