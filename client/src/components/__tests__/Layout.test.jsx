@@ -43,6 +43,20 @@ describe('Layout (authenticated shell)', () => {
     expect(screen.getByRole('link', { name: 'Activity' })).toBeTruthy();
   });
 
+  it('opens the mobile navigation drawer from the header menu button', async () => {
+    renderLayout();
+
+    // The drawer is closed at rest, so only the desktop sidebar's links exist.
+    expect(screen.getAllByRole('link', { name: 'Vault' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /open navigation menu/i }));
+
+    // Once opened, the drawer adds its own copy of the nav (and a close
+    // control), so the same destination now appears twice.
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Vault' })).toHaveLength(2));
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy();
+  });
+
   it('logs out and returns to the login screen (Figure 7 logout edge)', async () => {
     logout.mockResolvedValueOnce(undefined);
     renderLayout();

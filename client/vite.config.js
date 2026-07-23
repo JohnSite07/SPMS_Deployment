@@ -31,5 +31,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.{js,jsx}'],
+    // Polyfills window.matchMedia for jsdom component tests; a no-op in the
+    // node-env service suites (see src/test-setup.js).
+    setupFiles: ['./src/test-setup.js'],
   },
 });
