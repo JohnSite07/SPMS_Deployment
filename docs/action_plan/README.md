@@ -21,7 +21,19 @@ A PRD must be **Approved** by the user before execution starts. Once executed, i
 | [0011](0011-frontend-serving-and-cd-integration.md) | Frontend Serving & CD Integration (Express static + SPA fallback, Docker/CI-CD) | Done |
 | [0012](0012-frontend-api-client-foundation.md) | Frontend API Client Foundation (fetch wrapper, token handling, auth service) | Done |
 | [0013](0013-design-system-baseline.md) | Design System Baseline (react-bootstrap + SASS theme) | Done |
+| [0014](0014-database-schema-implementation.md) | Database Schema Capture & Reconciliation Migration (ALTER existing tables + grants) | Draft (awaiting approval) |
+| [0015](0015-password-reset-flow.md) | Password Reset Flow (forgot-password request + reset confirm, re-hash only) | Superseded by [0020](0020-totp-based-password-reset.md) |
+| [0016](0016-smtp-provisioning-for-password-reset.md) | SMTP Provisioning for Password-Reset Email (DevOps hand-off) | Draft — no longer blocking password reset (see PRD) |
+| [0017](0017-two-factor-enrollment.md) | Two-Factor Enrollment (TOTP setup + confirm) | Done |
+| [0018](0018-welcome-and-registration.md) | Welcome/Landing Page & Self-Service Account Registration | Done |
+| [0019](0019-credential-vault-ui-and-encryption.md) | Credential Vault: Client-Side Encryption + List/Add/View/Edit/Delete UI | Done |
+| [0020](0020-totp-based-password-reset.md) | TOTP-Based Password Reset (replaces the email-link flow) | Done |
+| [0021](0021-password-generator.md) | Password Generator | Done |
+| [0022](0022-password-health-and-dashboard.md) | Password Health Analysis (UC-05) + Vault Dashboard Redesign | Done |
+| [0023](0023-two-step-login-screens.md) | Two-Step Login: Separate Master-Password and 2FA Screens | Done (retrospective) |
 
 Execution order: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 (0002 and 0003 are independent of each other; the rest are sequential). Each PRD is executed only after user approval, and each ends with an infra-reviewer pass and its documentation deliverables.
+
+PRD numbers are creation order and are never renumbered, so they do not always match execution order. In particular **0014 (database schema) is a prerequisite for 0009 (storage adapters + crypto)** — the schema must be reconciled and applied before 0009's adapters can integration-test. Execute **0014 → 0009**.
 
 0008 is the first **application-code** PRD rather than an infrastructure one, and the first written *after* execution rather than before — a documented departure from the approval gate, noted at the top of the PRD itself. It creates no GCP resource and runs no billable command.

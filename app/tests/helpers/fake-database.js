@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { ItemOwnershipError } = require('../../src/ports/password-health');
 
 // One in-memory database behind every port, because that is how the real one
 // is shaped: a single MySQL instance whose transactions span the credential
@@ -16,6 +17,17 @@ function snapshot(state) {
     sessions: new Map([...state.sessions].map(([k, v]) => [k, { ...v }])),
     revoked: new Set(state.revoked),
     users: new Map([...state.users].map(([k, v]) => [k, { ...v }])),
+    resetTokens: new Map([...state.resetTokens].map(([k, v]) => [k, { ...v }])),
+    vaults: new Map([...state.vaults].map(([k, v]) => [k, { ...v }])),
+    // PRD 0022: keyed by reportId, mirroring PASSWORD_HEALTH_REPORTS
+    // (report_id PK) / REPORT_FINDINGS (composite PK, folded onto the report
+    // row here as `findings`, same simplification `credentials` above makes
+    // by keeping ciphertext inline rather than a second joined table).
+    healthReports: new Map([...state.healthReports].map(([k, v]) => [k, { ...v, findings: [...v.findings] }])),
+    // SECURITY_ALERTS -- a flat array, same shape as `entries` above (an
+    // append-only-feeling list keyed by nothing but insertion order plus its
+    // own alertId).
+    securityAlerts: state.securityAlerts.map((a) => ({ ...a })),
   };
 }
 
@@ -24,14 +36,31 @@ function snapshot(state) {
  * @param knownSessions session ids to pre-register as live.
  * @param failAppendOn  an ACTIONS value whose audit append should throw, to
  *                      drive the "unlogged action must not stand" tests.
+ * @param failVaultCreate  PRD 0018: when true, `vaults.create` throws — the
+ *                      fake's way of driving the "a failed vault insert must
+ *                      roll back the user insert too" atomicity test.
  */
-function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = null } = {}) {
+function createFakeDatabase({
+  users = [],
+  knownSessions = [],
+  failAppendOn = null,
+  failVaultCreate = false,
+} = {}) {
   const state = {
     credentials: new Map(),
     entries: [],
     sessions: new Map(knownSessions.map((id) => [id, { sessionId: id, userId: 'user-42' }])),
     revoked: new Set(),
     users: new Map(users.map((u) => [u.userId, { failedAttempts: 0, isLocked: false, ...u }])),
+    // Keyed by the token hash's hex encoding — same shape as the real
+    // store's VARBINARY unique index, just addressed in memory.
+    resetTokens: new Map(),
+    // PRD 0018: keyed by userId, same 1:1 shape as the real VAULTS table
+    // (UQ_VAULTS_USER).
+    vaults: new Map(),
+    // PRD 0022 (UC-05). See snapshot()'s comment above for the shape.
+    healthReports: new Map(),
+    securityAlerts: [],
   };
 
   const appendContexts = [];
@@ -80,6 +109,15 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
       const credential = state.credentials.get(itemId);
       return credential && credential.userId === userId ? { ...credential } : null;
     },
+    // PRD 0019. Newest-updated-first, mirroring ports/credentials.js's real
+    // `ORDER BY vi.updated_at DESC`; filtered to the caller's own rows only
+    // (business rule 6), same as get().
+    async list({ userId }) {
+      return [...state.credentials.values()]
+        .filter((c) => c.userId === userId)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        .map((c) => ({ ...c }));
+    },
     async update(tx, { userId, itemId, patch }) {
       const credential = state.credentials.get(itemId);
       if (!credential || credential.userId !== userId) {
@@ -109,6 +147,18 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     async revoke(tx, sessionId) {
       state.revoked.add(sessionId);
     },
+    // PRD 0015: every session belonging to userId, revoked at once — the
+    // real port's DELETE FROM SESSIONS WHERE user_id = ?, mirrored here as
+    // "mark every matching session id revoked" rather than removing them
+    // from the map, so isRevoked() below still has a row to answer "true"
+    // about (matches revoke()'s own approach for a single session).
+    async revokeAllForUser(tx, { userId }) {
+      for (const [sessionId, session] of state.sessions) {
+        if (session.userId === userId) {
+          state.revoked.add(sessionId);
+        }
+      }
+    },
     // Fail closed. A session the store has never heard of is treated as
     // revoked, not as fine: a token naming a session whose row was rolled
     // back would otherwise be honoured until its own expiry, and revocation
@@ -119,6 +169,11 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
   };
 
   const users_ = {
+    // PRD 0018: routes/register.js runs the user insert, the paired vault
+    // insert, and the ACCOUNT_CREATED audit entry all through
+    // `users.transaction`, the same shared snapshot/restore `transaction`
+    // every other fake port below reuses.
+    transaction,
     async findById(userId) {
       return state.users.get(userId) ?? null;
     },
@@ -134,6 +189,90 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     },
     async resetFailedAttempts(userId) {
       state.users.get(userId).failedAttempts = 0;
+    },
+    // PRD 0015. `hash` replaces whatever the fixture seeded, so a login
+    // attempted afterward with the old master password fails and one with
+    // the new password succeeds — exactly what the route's contract claims.
+    async updateMasterPasswordHash(tx, { userId, hash }) {
+      const user = state.users.get(userId);
+      if (user) {
+        user.masterPasswordHash = hash;
+      }
+    },
+    // PRD 0017 (2FA self-enrollment). Mirrors ports/users.js's upsert: writes
+    // (or replaces) a pending — `enabled: false` — config, same shape
+    // findByEmail/findById already attach to a seeded user.
+    async upsertPendingTwoFactorConfig(userId, encryptedSecret) {
+      const user = state.users.get(userId);
+      if (user) {
+        user.twoFactorConfig = { method: 'TOTP', enabled: false, encryptedSecret };
+      }
+    },
+    // The only place `enabled` flips to true, matching ports/users.js. Takes
+    // `tx` (unused here — this fake shares one in-memory state guarded by
+    // transaction()'s own snapshot/restore) so callers exercise the same
+    // (tx, userId) shape the real pooled port requires.
+    async enableTwoFactorConfig(tx, userId) {
+      const user = state.users.get(userId);
+      if (user && user.twoFactorConfig) {
+        user.twoFactorConfig = { ...user.twoFactorConfig, enabled: true };
+      }
+    },
+    // PRD 0018 (self-service registration). Mirrors ports/users.js's INSERT:
+    // a bare row with no twoFactorConfig, matching a genuinely fresh account
+    // (no TWO_FACTOR_CONFIGS row exists for it yet).
+    async createUser(tx, { email, passwordHash }) {
+      const userId = crypto.randomUUID();
+      state.users.set(userId, {
+        userId,
+        email,
+        masterPasswordHash: passwordHash,
+        failedAttempts: 0,
+        isLocked: false,
+      });
+      return userId;
+    },
+  };
+
+  const vaults = {
+    transaction,
+    // PRD 0018. `failVaultCreate` is this fake's hook for the atomicity
+    // test: routes/register.js calls this inside the same
+    // `users.transaction` as `createUser` above, and `transaction()`'s own
+    // snapshot/restore is what makes a throw here roll the user insert back
+    // too — the same mechanism every other atomicity test in this file
+    // relies on.
+    async create(tx, { userId }) {
+      if (failVaultCreate) {
+        throw new Error('vault insert failed');
+      }
+      // TRUE: a fresh vault starts locked — matches ports/vaults.js's real
+      // insert and the schema's own default (see that file's comment).
+      state.vaults.set(userId, { userId, autoLockMinutes: 10, isLocked: true });
+    },
+  };
+
+  const resetTokenKey = (tokenHash) =>
+    Buffer.isBuffer(tokenHash) ? tokenHash.toString('hex') : String(tokenHash);
+
+  const resetTokens = {
+    transaction,
+    async create(tx, { userId, tokenHash, expiresAt }) {
+      state.resetTokens.set(resetTokenKey(tokenHash), {
+        userId,
+        expiresAt,
+        usedAt: null,
+      });
+    },
+    // Mirrors the real store's single-use guarantee: a row is only ever
+    // consumed once, and a missing/expired/already-used row all answer null.
+    async consume(tx, { tokenHash }) {
+      const row = state.resetTokens.get(resetTokenKey(tokenHash));
+      if (!row || row.usedAt || row.expiresAt.getTime() <= Date.now()) {
+        return null;
+      }
+      row.usedAt = new Date();
+      return { userId: row.userId };
     },
   };
 
@@ -173,6 +312,77 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     },
   };
 
+  // PRD 0022 (UC-05). `vaultId` is simply `userId` in this fake -- the real
+  // schema is 1:1 (VAULTS/UQ_VAULTS_USER) and this store, like `credentials`
+  // above, already keys ownership on userId directly rather than modeling a
+  // separate vault row, so there is nothing a distinct vaultId would buy here
+  // that userId doesn't already give. Business rule 6 is still enforced: the
+  // fake throws the *same* ItemOwnershipError class the real port does, so
+  // routes/password-health.js's `err instanceof ItemOwnershipError` check
+  // behaves identically over the fake and the real store.
+  const passwordHealth = {
+    transaction,
+    async getVaultIdForUser(userId) {
+      return userId;
+    },
+    async createReport(tx, { vaultId, overallScore }) {
+      const reportId = crypto.randomUUID();
+      state.healthReports.set(reportId, {
+        reportId,
+        vaultId,
+        overallScore,
+        generatedAt: new Date(),
+        findings: [],
+      });
+      return reportId;
+    },
+    async addFindings(tx, { vaultId, reportId, findings }) {
+      const notOwned = findings
+        .map((f) => f.itemId)
+        .filter((itemId) => {
+          const credential = state.credentials.get(itemId);
+          return !credential || credential.userId !== vaultId;
+        });
+      if (notOwned.length > 0) {
+        throw new ItemOwnershipError(notOwned);
+      }
+      const report = state.healthReports.get(reportId);
+      report.findings = findings.map((f) => ({ itemId: f.itemId, status: f.status }));
+    },
+    async addAlerts(tx, { reportId, alerts }) {
+      for (const alert of alerts) {
+        state.securityAlerts.push({
+          alertId: crypto.randomUUID(),
+          reportId,
+          type: alert.type,
+          message: alert.message,
+          isRead: false,
+          createdAt: new Date(),
+        });
+      }
+    },
+    async getLatestReport({ vaultId }) {
+      const reports = [...state.healthReports.values()]
+        .filter((r) => r.vaultId === vaultId)
+        .sort((a, b) => b.generatedAt.getTime() - a.generatedAt.getTime());
+      const report = reports[0];
+      if (!report) {
+        return null;
+      }
+      const alerts = state.securityAlerts.filter(
+        (a) => a.reportId === report.reportId && !a.isRead
+      );
+      return {
+        reportId: report.reportId,
+        vaultId: report.vaultId,
+        overallScore: report.overallScore,
+        generatedAt: report.generatedAt,
+        findings: report.findings.map((f) => ({ ...f })),
+        alerts: alerts.map((a) => ({ ...a })),
+      };
+    },
+  };
+
   return {
     state,
     append,
@@ -180,7 +390,10 @@ function createFakeDatabase({ users = [], knownSessions = [], failAppendOn = nul
     credentials,
     sessions,
     users: users_,
+    vaults,
+    passwordHealth,
     auditReader,
+    resetTokens,
     // Convenience for assertions.
     actions: () => state.entries.map((e) => e.action),
     entriesFor: (userId) => state.entries.filter((e) => e.userId === userId),

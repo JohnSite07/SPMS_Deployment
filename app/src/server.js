@@ -2,10 +2,12 @@ const { createApp } = require('./app');
 const { loadJwtConfig } = require('./config/env');
 const { loadDbConfig } = require('./db/pool');
 const { createUsersPort } = require('./ports/users');
+const { createVaultsPort } = require('./ports/vaults');
 const { createSessionsPort } = require('./ports/sessions');
 const { createCredentialsPort } = require('./ports/credentials');
+const { createPasswordHealthPort } = require('./ports/password-health');
 const { createAuditReaderPort, createAuditAppend } = require('./ports/audit-reader');
-const { verifyPassword } = require('./services/password-hasher');
+const { verifyPassword, hashPassword } = require('./services/password-hasher');
 const { verifyTwoFactorCode } = require('./services/two-factor-verifier');
 const { createAuditLog, ACTIONS } = require('./services/audit-log');
 const { createSessionIssuer } = require('./services/session-issuer');
@@ -15,9 +17,9 @@ const port = Number(process.env.PORT) || 8080;
 
 // Validate the env contract before binding the port. A revision missing its
 // secrets should fail its startup probe and never receive traffic, rather
-// than serve /health happily and 500 on the first login. Both the JWT
-// signing key and the DB connection config are load-bearing for every
-// authenticated route, so both are checked here, eagerly, before `listen()`.
+// than serve /health happily and 500 on the first login. The JWT signing key
+// and the DB connection config are load-bearing for every authenticated
+// route, so they stay fail-fast: checked here, eagerly, before `listen()`.
 try {
   loadJwtConfig();
   loadDbConfig();
@@ -28,8 +30,10 @@ try {
 }
 
 const users = createUsersPort();
+const vaults = createVaultsPort();
 const sessions = createSessionsPort();
 const credentials = createCredentialsPort();
+const passwordHealth = createPasswordHealthPort();
 const auditReader = createAuditReaderPort();
 
 // Separate from `auditReader` on purpose (see app.js's own comment on this):
@@ -61,7 +65,17 @@ const issuer = createSessionIssuer({
     }),
 });
 
-createApp({ users, sessions, credentials, auditReader, audit, issuer }).listen(port, () => {
+createApp({
+  users,
+  vaults,
+  sessions,
+  credentials,
+  passwordHealth,
+  auditReader,
+  audit,
+  issuer,
+  hashPassword,
+}).listen(port, () => {
   // eslint-disable-next-line no-console
   console.log(`securevault listening on ${port}`);
 });

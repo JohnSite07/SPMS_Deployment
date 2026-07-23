@@ -90,17 +90,35 @@ function createCredentialRoutes({ store, audit } = {}) {
     })
   );
 
+  // PRD 0019 (vault list UI). Whole-vault listing, still filtered through
+  // business rule 6 by the store (list() joins through VAULTS.user_id, same
+  // as get()).
+  //
+  // One CREDENTIALS_LISTED entry per call, not one per returned item, and not
+  // zero. Zero was this route's first cut, on the reasoning that listing is
+  // routine navigation (every /credentials page load, not a deliberate
+  // reveal) and per-item entries here would just be UC-03's audit granularity
+  // stretched past what it means. That reasoning still holds against "log one
+  // row per item" -- but infra-reviewer's sign-off pass correctly pointed out
+  // it doesn't hold against zero: a stolen bearer token can pull every
+  // credential's ciphertext in one unlogged call, leaving no trail at all,
+  // where doing the same thing item-by-item via GET /:itemId would leave N
+  // CREDENTIAL_RETRIEVED rows. "It's ciphertext, not plaintext" doesn't make
+  // that acceptable -- ciphertext exfiltration is still the precondition an
+  // offline attacker needs if the vault key is ever compromised, and a
+  // forensic reconstruction of "was this vault bulk-read" needs at least one
+  // row to find. A single coarse entry keeps both properties: no per-item
+  // noise on routine navigation, and no zero-trail bulk read either. See
+  // audit-entry.js for why this is its own action (CREDENTIALS_LISTED) rather
+  // than a reuse of CREDENTIAL_RETRIEVED.
+  //
+  // Written before the response, uncaught, same fail-closed shape as GET
+  // /:itemId below: if the access cannot be logged, it is not disclosed.
   router.get(
     '/',
     asyncRoute(async (req, res) => {
-      // If store.list does not exist yet (to prevent crashes on old ports), fallback
-      if (typeof store.list !== 'function') {
-        return res.status(501).json({ error: 'not_implemented' });
-      }
-      
       const credentials = await store.list({ userId: req.auth.userId });
-      // We don't log a single action for list, or maybe we log CREDENTIAL_RETRIEVED for the list? 
-      // The requirements don't explicitly demand logging a list view, but it's safe to just return.
+      await audit.forRequest(req).logAction({ action: ACTIONS.CREDENTIALS_LISTED });
       return res.status(200).json(credentials.map(readableFields));
     })
   );

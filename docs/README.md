@@ -40,6 +40,11 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0009 — Frontend stack and serving model: React/Vite served by Cloud Run, not a CDN bucket](decisions/0009-frontend-stack-and-serving-model.md)
 - [0010 — In-memory session-token storage in the SPA (no localStorage/sessionStorage/cookies)](decisions/0010-in-memory-session-token-storage.md)
 - [0011 — Design-system baseline: react-bootstrap + a single SASS token file](decisions/0011-design-system-baseline.md)
+- [0012 — Two-factor enrollment as a separate public, pre-session surface](decisions/0012-two-factor-enrollment-separate-public-surface.md)
+- [0013 — Duplicate-email disclosure on registration as a deliberate anti-enumeration exception](decisions/0013-duplicate-email-disclosure-on-registration.md)
+- [0014 — Password reset proves identity via TOTP, not an emailed link](decisions/0014-totp-based-password-reset.md)
+- [0015 — Vault-key derivation: direct KDF from the master password, email-derived salt](decisions/0015-vault-key-derivation-from-master-password.md)
+- [0016 — Client-side password health analysis: the server stores conclusions, not evidence](decisions/0016-client-side-password-health-analysis.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment

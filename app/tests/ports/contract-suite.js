@@ -1,5 +1,10 @@
+const crypto = require('crypto');
 const { ACTIONS, createAuditEntry } = require('../../src/models/audit-entry');
 const { createAuditLog } = require('../../src/services/audit-log');
+
+function tokenHash(raw) {
+  return crypto.createHash('sha256').update(raw, 'utf8').digest();
+}
 
 // The reference contract, run twice: once against the in-memory fake
 // (tests/helpers/fake-database.js) and once — only when a real database is
@@ -203,6 +208,50 @@ function runPortContractSuite(label, buildFixture) {
         ).rejects.toThrow('audit append failed');
 
         expect(await fixture.credentials.get({ userId: owner.userId, itemId })).toBeNull();
+      });
+    });
+
+    describe('password-reset tokens (PRD 0015)', () => {
+      it('consumes a valid token exactly once — a second consume returns null', async () => {
+        const { userId } = await fixture.seedUser();
+        const hash = tokenHash('raw-token-single-use');
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+        await fixture.resetTokens.transaction((tx) =>
+          fixture.resetTokens.create(tx, { userId, tokenHash: hash, expiresAt })
+        );
+
+        const first = await fixture.resetTokens.transaction((tx) =>
+          fixture.resetTokens.consume(tx, { tokenHash: hash })
+        );
+        expect(first).toEqual({ userId });
+
+        const second = await fixture.resetTokens.transaction((tx) =>
+          fixture.resetTokens.consume(tx, { tokenHash: hash })
+        );
+        expect(second).toBeNull();
+      });
+
+      it('returns null for an expired token, never consuming it', async () => {
+        const { userId } = await fixture.seedUser();
+        const hash = tokenHash('raw-token-expired');
+        const expiresAt = new Date(Date.now() - 1000);
+
+        await fixture.resetTokens.transaction((tx) =>
+          fixture.resetTokens.create(tx, { userId, tokenHash: hash, expiresAt })
+        );
+
+        const outcome = await fixture.resetTokens.transaction((tx) =>
+          fixture.resetTokens.consume(tx, { tokenHash: hash })
+        );
+        expect(outcome).toBeNull();
+      });
+
+      it('returns null for a token that was never issued', async () => {
+        const outcome = await fixture.resetTokens.transaction((tx) =>
+          fixture.resetTokens.consume(tx, { tokenHash: tokenHash('never-issued') })
+        );
+        expect(outcome).toBeNull();
       });
     });
 

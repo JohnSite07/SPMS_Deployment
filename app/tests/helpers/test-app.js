@@ -32,6 +32,14 @@ const seedAdmin = (overrides = {}) =>
 const verifyPassword = async (hash, password) => hash === `hash:${password}`;
 const verifyTwoFactorCode = async (config, code) => code === TWO_FACTOR_CODE;
 
+// A stand-in for services/password-hasher.js's real (bcrypt) hashPassword,
+// in the same `hash:${password}` shape verifyPassword above expects. This is
+// what lets a password-reset test log in with the new password afterward
+// through the exact same login() helper every other test file uses: the
+// fake store's updateMasterPasswordHash writes this shape, and verifyPassword
+// reads it back.
+const fakeHashPassword = async (password) => `hash:${password}`;
+
 // Entries written in the same millisecond are ordered by entryId, which is a
 // random uuid — a total order, but not insertion order. Tests that assert
 // "newest first" must therefore write entries at distinct times, or they are
@@ -76,9 +84,12 @@ function testApp({
     issuer,
     audit,
     users: db.users,
+    vaults: db.vaults,
     sessions: sessions ?? db.sessions,
     credentials: db.credentials,
+    passwordHealth: db.passwordHealth,
     auditReader: db.auditReader,
+    hashPassword: fakeHashPassword,
   });
 
   return { app, db, tokenService, audit };
@@ -90,6 +101,7 @@ const permissiveSessions = {
   transaction: async (fn) => fn({}),
   start: async () => ({ sessionId: 'sess-7' }),
   revoke: async () => {},
+  revokeAllForUser: async () => {},
   isRevoked: async () => false,
 };
 
@@ -101,6 +113,7 @@ module.exports = {
   seedAdmin,
   verifyPassword,
   verifyTwoFactorCode,
+  fakeHashPassword,
   PASSWORD,
   TWO_FACTOR_CODE,
 };

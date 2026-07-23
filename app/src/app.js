@@ -5,8 +5,13 @@ const { createAuthMiddleware } = require('./middleware/authenticate');
 const { errorHandler } = require('./middleware/error-handler');
 const { createCredentialRoutes } = require('./routes/credentials');
 const { createSessionRoutes } = require('./routes/session');
+const { createRegisterRoutes } = require('./routes/register');
 const { createAuditRoutes } = require('./routes/audit');
 const { createAdminAuditRoutes } = require('./routes/admin-audit');
+const { createPasswordResetRoutes } = require('./routes/password-reset');
+const { createTwoFactorRoutes } = require('./routes/two-factor');
+const { createPasswordHealthRoutes } = require('./routes/password-health');
+const { loadTrustProxyHops } = require('./config/env');
 
 // App factory, separated from server.js so tests can mount it without binding
 // a port. Every collaborator is injected: this module wires ports together
@@ -19,40 +24,56 @@ const { createAdminAuditRoutes } = require('./routes/admin-audit');
  *                      a device sighting lands in the log the login writes to.
  * @param audit         createAuditLog() instance — the only writer.
  * @param users         user port (see routes/session.js).
+ * @param vaults        vault port (see routes/register.js) — the composed
+ *                      VAULTS row a fresh registration is paired with.
  * @param sessions      session port; also supplies isRevoked() to the auth
  *                      middleware, which is what makes logout mean something.
  * @param credentials   credential port (see routes/credentials.js).
+ * @param passwordHealth  password-health port (see routes/password-health.js
+ *                      and ports/password-health.js) — PRD 0022 / UC-05.
  * @param auditReader   audit read port (see routes/audit.js). Separate from
  *                      `audit` on purpose: one object can append and cannot
  *                      read, the other can read and cannot append. Neither
  *                      can update or delete, and no object in the process
  *                      holds both halves.
+ * @param hashPassword  services/password-hasher.js's hashPassword, used both
+ *                      by registration and by the password-reset route to
+ *                      turn a newPassword into a stored hash.
  */
 function createApp({
   tokenService,
   issuer,
   audit,
   users,
+  vaults,
   sessions,
   credentials,
+  passwordHealth,
   auditReader,
+  hashPassword,
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json());
 
-  // TODO(audit): `trust proxy` is unset, so `req.ip` is the socket peer —
-  // under Cloud Run that is the Google front end (locally: ::ffff:127.0.0.1),
-  // never the client. Every entry services/audit-log.js writes would record
-  // the same useless address.
+  // What `req.ip` resolves to, and therefore what services/audit-log.js
+  // records on every entry. Set from TRUST_PROXY_HOPS, which config/env.js
+  // parses and range-checks; it is a hop count and never a boolean, because
+  // `trust proxy: true` would let a client pick its own audit-log address.
+  // See the long note in config/env.js for why counting from the right is the
+  // property that makes the address unforgeable.
   //
-  // Do not "fix" this with `trust proxy: true`. That takes the left-most
-  // X-Forwarded-For entry, which the client supplies, letting an attacker
-  // choose what the audit log says about them. The correct value is the
-  // number of proxies actually in front of the container, which has to be
-  // confirmed against a deployed revision (log X-Forwarded-For and count the
-  // hops) rather than assumed — direct *.run.app and an external HTTPS load
-  // balancer do not agree.
+  // The count is deployment topology, not a code constant: direct *.run.app
+  // and an external HTTPS load balancer put a different number of hops in
+  // front of this container, so it is confirmed against a deployed revision
+  // (log X-Forwarded-For, count the entries) and set on the service. Left
+  // unset it is 0 — `req.ip` is the socket peer, which under Cloud Run is the
+  // Google front end, so entries carry a useless address rather than a
+  // confidently wrong one. Until DevOps sets it, that is the state.
+  const trustProxyHops = loadTrustProxyHops();
+  if (trustProxyHops > 0) {
+    app.set('trust proxy', trustProxyHops);
+  }
 
   // Health endpoint: used by the CD pipeline's smoke test against the
   // candidate revision before traffic is shifted. Keep it dependency-free
@@ -107,7 +128,37 @@ function createApp({
   // POST here is public — it is the request that creates the session every
   // other route requires. DELETE here is not. See PUBLIC_PATHS.
   app.use('/api/session', createSessionRoutes({ users, sessions, issuer, audit }));
+
+  // Public too (PUBLIC_PATHS): a new visitor by definition holds no
+  // session — same reasoning as routes/session.js, routes/password-reset.js
+  // and routes/two-factor.js. PRD 0018.
+  app.use('/api/register', createRegisterRoutes({ users, vaults, audit, hashPassword }));
+
+  // Both routes here are public too (PUBLIC_PATHS), for the same reason
+  // POST /api/session is: a user with no second factor configured yet holds
+  // no session token either, so enrollment has to be reachable before one
+  // exists. PRD 0017.
+  app.use('/api/2fa', createTwoFactorRoutes({ users, issuer, audit, sessions }));
+
   app.use('/api/credentials', createCredentialRoutes({ store: credentials, audit }));
+
+  // Authenticated only -- no PUBLIC_PATHS entry, default-deny already covers
+  // it (there is no pre-session step here the way login/register/2FA
+  // enrollment need one). PRD 0022 / UC-05.
+  app.use(
+    '/api/password-health',
+    createPasswordHealthRoutes({ store: passwordHealth, audit })
+  );
+
+  // Public too (PUBLIC_PATHS): a forgotten master password is by definition
+  // a request made with no session. Re-hash only — see routes/
+  // password-reset.js's header comment. PRD 0020: identity is proven via the
+  // user's already-enrolled 2FA TOTP code, so this has no SMTP dependency at
+  // all — unlike the flow it replaced, there is no "disabled mode" here.
+  app.use(
+    '/api/password-reset',
+    createPasswordResetRoutes({ users, sessions, audit, hashPassword })
+  );
 
   // The owner's activity view: their own log, and only ever their own.
   app.use('/api/audit', createAuditRoutes({ store: auditReader }));

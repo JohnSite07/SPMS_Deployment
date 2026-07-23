@@ -106,6 +106,115 @@ describe('POST /api/credentials (UC-02 add)', () => {
   });
 });
 
+describe('GET /api/credentials (PRD 0019 list)', () => {
+  it('returns only the caller\'s own items, not another user\'s', async () => {
+    const { app } = build();
+    const ownerToken = await login(app);
+    await addCredential(app, ownerToken, { ...NEW_CREDENTIAL, title: 'Owner item' });
+    const otherToken = await login(app, 'other@example.com');
+    await addCredential(app, otherToken, { ...NEW_CREDENTIAL, title: 'Other item' });
+
+    const res = await request(app)
+      .get('/api/credentials')
+      .set('Authorization', `Bearer ${ownerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({ title: 'Owner item' });
+  });
+
+  it('returns an empty array, not a 404, for a vault with no items', async () => {
+    const { app } = build();
+    const token = await login(app);
+
+    const res = await request(app)
+      .get('/api/credentials')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('orders results newest-updated-first', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick'] });
+    try {
+      jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+      const { app } = build();
+      const token = await login(app);
+
+      const first = await addCredential(app, token, { ...NEW_CREDENTIAL, title: 'First' });
+
+      // Small deltas (well under any session TTL), just enough to give each
+      // row a distinct `updated_at` millisecond to sort on.
+      jest.setSystemTime(new Date('2026-01-01T00:00:01Z'));
+      await addCredential(app, token, { ...NEW_CREDENTIAL, title: 'Second' });
+
+      // Touch the first item last, so update order (not creation order)
+      // decides the ranking.
+      jest.setSystemTime(new Date('2026-01-01T00:00:02Z'));
+      await request(app)
+        .patch(`/api/credentials/${first.body.itemId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: 'First (touched)' });
+
+      const res = await request(app)
+        .get('/api/credentials')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.body.map((c) => c.title)).toEqual(['First (touched)', 'Second']);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // One coarse entry per list call -- not zero (a bulk ciphertext read would
+  // leave no trail at all) and not N (one per returned item would flood the
+  // log on every routine page load). See routes/credentials.js's `GET /` and
+  // audit-entry.js's CREDENTIALS_LISTED for the full reasoning.
+  it('writes exactly one credentials.listed entry per list call, regardless of item count', async () => {
+    const { app, db } = build();
+    const token = await login(app);
+    await addCredential(app, token);
+    await addCredential(app, token, { ...NEW_CREDENTIAL, title: 'Second' });
+
+    const res = await request(app)
+      .get('/api/credentials')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(db.actions()).not.toContain(ACTIONS.CREDENTIAL_RETRIEVED);
+    expect(db.actions().filter((a) => a === ACTIONS.CREDENTIALS_LISTED)).toHaveLength(1);
+    expect(db.actions()).toEqual([
+      ACTIONS.LOGIN_SUCCEEDED,
+      ACTIONS.CREDENTIAL_ADDED,
+      ACTIONS.CREDENTIAL_ADDED,
+      ACTIONS.CREDENTIALS_LISTED,
+    ]);
+  });
+
+  // The guarantee this route now shares with GET /:itemId: an access that
+  // cannot be logged is not disclosed. Without this, a failing audit append
+  // would leave the response's ciphertext sent with no trail behind it.
+  it('does not disclose the list when the access cannot be logged', async () => {
+    const { app } = build({ failAppendOn: ACTIONS.CREDENTIALS_LISTED });
+    const token = await login(app);
+    await addCredential(app, token);
+
+    const res = await request(app)
+      .get('/api/credentials')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(500);
+    expect(res.text).not.toContain('AES256:8f3a');
+  });
+
+  it('requires authentication', async () => {
+    const { app } = build();
+    const res = await request(app).get('/api/credentials');
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('GET /api/credentials/:itemId (UC-03 view)', () => {
   it('returns the credential and records credential.retrieved', async () => {
     const { app, db } = build();

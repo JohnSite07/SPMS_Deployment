@@ -86,4 +86,8 @@ export async function request(method, path, { body, headers } = {}) {
 export const get = (path, options) => request('GET', path, options);
 export const post = (path, body, options) => request('POST', path, { ...options, body });
 export const put = (path, body, options) => request('PUT', path, { ...options, body });
+// PRD 0019: routes/credentials.js's edit route is a PATCH, not a PUT — this
+// wrapper exists so credentials-service.js actually sends that verb instead
+// of silently reusing put() for a different HTTP method.
+export const patch = (path, body, options) => request('PATCH', path, { ...options, body });
 export const del = (path, options) => request('DELETE', path, options);

@@ -4,7 +4,9 @@
 
 import { post, get, del } from './api-client';
 import * as store from './token-store';
+import * as vaultKeyStore from './vault-key-store';
 import { cancelAutoLock } from './session';
+import { deriveVaultKey } from './vault-crypto';
 
 // UC-01. Returns { token, sessionId } on success (see app/src/routes/session.js).
 // The login response is a public route, so it carries no sliding-session
@@ -21,6 +23,18 @@ export async function login({ email, password, code, deviceToken } = {}) {
   } catch {
     // Token is valid; the auto-lock arms on the next authenticated call.
   }
+  // PRD 0019: derive the vault's AES-256-GCM key from the master password
+  // while it's still in scope, and hold it in vault-key-store.js for the rest
+  // of the session. Done after the token is already stored so a failure here
+  // (extremely unlikely — Web Crypto unavailable/misconfigured) never turns a
+  // successful login into a failed one; Credentials.jsx detects a missing
+  // vault key and tells the user to log out and back in rather than guessing.
+  try {
+    const vaultKey = await deriveVaultKey(password, email);
+    vaultKeyStore.setVaultKey(vaultKey);
+  } catch {
+    // See above: login has already succeeded, so this is not fatal here.
+  }
   return { sessionId };
 }
 
@@ -35,6 +49,10 @@ export async function logout() {
   } finally {
     cancelAutoLock();
     store.clear();
+    // logout() does not route through session.js's endSession() (it also
+    // does its own redirect-free cleanup here), so the vault key needs its
+    // own clear() call too — see the note in session.js's endSession().
+    vaultKeyStore.clear();
   }
 }
 

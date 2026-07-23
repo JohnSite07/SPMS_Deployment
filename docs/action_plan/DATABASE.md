@@ -458,7 +458,9 @@ Parameterized DML (`?` placeholders, `mysql2` style) for every table.
 
 ```sql
 -- ===== 1. USERS =============================================================
--- Register
+-- Register: PRD 0018's ports/users.js createUser(tx, { email, passwordHash })
+-- issues exactly this query, inside the same transaction as the VAULTS
+-- insert below and the ACCOUNT_CREATED audit entry.
 INSERT INTO USERS (email, master_password_hash) VALUES (?, ?);
 -- Login lookup
 SELECT user_id, email, master_password_hash, failed_attempts, is_locked, lockout_until, created_at
@@ -478,6 +480,11 @@ DELETE FROM USERS WHERE user_id = ?;
 
 -- ===== 2. VAULTS ============================================================
 INSERT INTO VAULTS (user_id, auto_lock_minutes, is_locked) VALUES (?, ?, TRUE);
+-- Register (PRD 0018): the composed Vault created alongside a new USERS row,
+-- in the same transaction. auto_lock_minutes is a literal 10 (business rule
+-- 5), not caller-supplied, and is_locked is always TRUE — a vault nobody has
+-- ever logged into starts locked (see domain-model.md's implementation notes).
+INSERT INTO VAULTS (user_id, auto_lock_minutes, is_locked) VALUES (?, 10, TRUE);
 SELECT vault_id, user_id, auto_lock_minutes, is_locked FROM VAULTS WHERE user_id = ?;
 SELECT vault_id, user_id, auto_lock_minutes, is_locked FROM VAULTS WHERE vault_id = ?;
 UPDATE VAULTS SET auto_lock_minutes = ? WHERE vault_id = ?;
@@ -507,10 +514,21 @@ SELECT vi.item_id, vi.vault_id, vi.title, vi.created_at, vi.updated_at,
        c.url, c.username, c.encrypted_password, c.password_iv, c.password_tag, c.last_changed
   FROM VAULT_ITEMS vi JOIN CREDENTIALS c ON c.item_id = vi.item_id
  WHERE vi.item_id = ?;
--- List all credentials in a vault
-SELECT vi.item_id, vi.title, c.url, c.username, c.last_changed
-  FROM VAULT_ITEMS vi JOIN CREDENTIALS c ON c.item_id = vi.item_id
- WHERE vi.vault_id = ? ORDER BY vi.title;
+-- List all credentials for a user (PRD 0019, GET /api/credentials). Filtered
+-- through VAULTS.user_id -- same ownership join as the single-item read above,
+-- not a caller-supplied vault_id -- so business rule 6 holds for the list
+-- endpoint too (app/src/ports/credentials.js's list()/OWNED_ITEMS_QUERY).
+-- Ordered newest-updated-first for the vault list UI, not alphabetically:
+-- this replaces an earlier catalogue example that ordered by vi.title and
+-- filtered by vault_id directly, which never matched what the shipped code
+-- does or needs.
+SELECT vi.item_id, v.user_id, vi.title, vi.created_at, vi.updated_at,
+       c.url, c.username, c.encrypted_password
+  FROM VAULT_ITEMS vi
+  JOIN CREDENTIALS c ON c.item_id = vi.item_id
+  JOIN VAULTS v ON v.vault_id = vi.vault_id
+ WHERE v.user_id = ?
+ ORDER BY vi.updated_at DESC;
 -- Rotate the password (new ciphertext/iv/tag)
 UPDATE CREDENTIALS
    SET encrypted_password = ?, password_iv = ?, password_tag = ?, last_changed = CURRENT_TIMESTAMP
@@ -543,6 +561,19 @@ UPDATE TWO_FACTOR_CONFIGS SET enabled = ? WHERE user_id = ?;      -- enable afte
 UPDATE TWO_FACTOR_CONFIGS SET method = ?, secret_enc = ?, secret_iv = ?, secret_tag = ?, enabled = FALSE
   WHERE user_id = ?;                                             -- re-enroll
 DELETE FROM TWO_FACTOR_CONFIGS WHERE user_id = ?;
+-- PRD 0017 (self-service TOTP enrollment) -----------------------------------
+-- Upsert a pending (unconfirmed) secret on UQ_TFA_USER — always leaves enabled=FALSE,
+-- so a re-run of /enroll (e.g. after a botched confirm) replaces the pending
+-- secret instead of accumulating rows or ever writing an enabled one directly.
+INSERT INTO TWO_FACTOR_CONFIGS (user_id, method, secret_enc, secret_iv, secret_tag, enabled)
+     VALUES (?, 'TOTP', ?, ?, ?, FALSE)
+  ON DUPLICATE KEY UPDATE
+     method = 'TOTP', secret_enc = VALUES(secret_enc), secret_iv = VALUES(secret_iv),
+     secret_tag = VALUES(secret_tag), enabled = FALSE;
+-- The only statement that ever flips enabled to TRUE — run inside the same
+-- transaction as the TWO_FACTOR_ENABLED audit insert and the session start
+-- (app/src/routes/two-factor.js), so a failure anywhere rolls all of it back.
+UPDATE TWO_FACTOR_CONFIGS SET enabled = TRUE WHERE user_id = ?;  -- confirm: live TOTP code verified
 
 
 -- ===== 7. SESSIONS =========================================================

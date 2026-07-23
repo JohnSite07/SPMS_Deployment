@@ -75,6 +75,22 @@ async function fetchOwned(conn, { userId, itemId }) {
   return mapRow(rows[0]);
 }
 
+// Same join shape as OWNED_ITEM_QUERY, minus the single-item_id filter, for
+// the whole-vault listing PRD 0019 adds. Ordered newest-updated-first,
+// matching DATABASE.md's VAULT_ITEMS listing pattern (`ORDER BY updated_at
+// DESC`) rather than the CREDENTIALS-specific catalogue entry that instead
+// alphabetises by title -- newest-first is what a vault list UI wants (most
+// recently touched items surface first) and is what this PRD calls for.
+const OWNED_ITEMS_QUERY = `
+  SELECT vi.item_id, v.user_id, vi.title, vi.created_at, vi.updated_at,
+         c.url, c.username, c.encrypted_password
+    FROM VAULT_ITEMS vi
+    JOIN CREDENTIALS c ON c.item_id = vi.item_id
+    JOIN VAULTS v ON v.vault_id = vi.vault_id
+   WHERE v.user_id = ?
+   ORDER BY vi.updated_at DESC
+`;
+
 function createCredentialsPort({ pool = getPool(), transaction = sharedTransaction } = {}) {
   return {
     transaction,
@@ -125,17 +141,13 @@ function createCredentialsPort({ pool = getPool(), transaction = sharedTransacti
       return fetchOwned(pool, { userId, itemId });
     },
 
+    // The whole-vault listing PRD 0019 adds, for the vault list UI. Same "no
+    // transaction" rationale as get() above: nothing is written, so there is
+    // nothing to roll back. Every row is still filtered through VAULTS.user_id
+    // (business rule 6) -- a listing that trusted a caller-supplied vault id
+    // instead would let one user page through another user's items.
     async list({ userId }) {
-      const [rows] = await pool.execute(
-        `SELECT vi.item_id, v.user_id, vi.title, vi.created_at, vi.updated_at,
-                c.url, c.username, c.encrypted_password
-           FROM VAULT_ITEMS vi
-           JOIN CREDENTIALS c ON c.item_id = vi.item_id
-           JOIN VAULTS v ON v.vault_id = vi.vault_id
-          WHERE v.user_id = ?
-          ORDER BY vi.title ASC`,
-        [userId]
-      );
+      const [rows] = await pool.execute(OWNED_ITEMS_QUERY, [userId]);
       return rows.map(mapRow);
     },
 

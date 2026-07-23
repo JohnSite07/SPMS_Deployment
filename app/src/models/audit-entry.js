@@ -36,11 +36,14 @@ const ACTIONS = Object.freeze({
   CREDENTIAL_RETRIEVED: 'credential.retrieved', // UC-03
   CREDENTIAL_UPDATED: 'credential.updated', // see the note below
   CREDENTIAL_DELETED: 'credential.deleted', // see the note below
+  CREDENTIALS_LISTED: 'credentials.listed', // PRD 0019, whole-vault list — see the note below
   DOCUMENT_STORED: 'document.stored', // UC-04
   DOCUMENT_RETRIEVED: 'document.retrieved', // UC-06 / event 6
   PASSWORD_GENERATED: 'password.generated', // event 4
   HEALTH_REPORT_GENERATED: 'health_report.generated', // UC-05
   AUDIT_LOG_READ: 'audit_log.read', // an admin read a user's history
+  TWO_FACTOR_ENABLED: 'two_factor.enabled', // PRD 0017, 2FA self-enrollment
+  ACCOUNT_CREATED: 'account.created', // PRD 0018, self-service registration
 });
 
 const ACTION_VALUES = Object.freeze(Object.values(ACTIONS));
@@ -53,6 +56,21 @@ const ACTION_VALUES = Object.freeze(Object.values(ACTIONS));
 // audit trail — the destructive actions are precisely the ones it exists to
 // witness. The requirements owe these three a use case; until then, treat
 // this comment as the specification.
+
+// `credentials.listed` is deliberately a distinct action from
+// `credential.retrieved`, not a reuse of it, even though both ultimately
+// disclose the same `encrypted_password` field. A single `credential.
+// retrieved` names one item and one deliberate reveal (UC-03); a whole-vault
+// list names none and can hand back every credential's ciphertext in one
+// call. Collapsing them into one action would erase exactly the signal a
+// forensic read of this log needs after a stolen-token incident: a wall of
+// `credential.retrieved` rows (an attacker looping the single-item route) and
+// a single `credentials.listed` row (an attacker — or a normal page load —
+// hitting the list route once) are different attack shapes, and an
+// investigator asking "was this vault bulk-read?" needs to tell them apart.
+// One entry per list call, not one per returned item: see routes/
+// credentials.js's `GET /` for why per-item entries here would just trade
+// exfiltration-forensics value for unusable, routine-navigation noise.
 
 // Express behind Cloud Run reports IPv4 peers as IPv4-mapped IPv6
 // (`::ffff:203.0.113.5`), and `net.isIP` classifies that as v6. Left alone,

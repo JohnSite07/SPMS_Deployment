@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Container, ListGroup, Button, Spinner, Alert, Badge, Card } from 'react-bootstrap';
+import { Container, ListGroup, Button, Spinner, Alert, Card } from 'react-bootstrap';
 import { getAuditLog } from '../services/audit';
 
 export default function Activity() {
@@ -13,7 +13,9 @@ export default function Activity() {
   const [nextCursor, setNextCursor] = useState(null);
   const [cursorHistory, setCursorHistory] = useState([]);
   
-  const LIMIT = 20;
+  // Small enough that a page fits on screen without scrolling, which is what
+  // makes the Previous/Next controls reachable rather than below the fold.
+  const LIMIT = 7;
 
   useEffect(() => {
     let ignore = false;
@@ -90,16 +92,17 @@ export default function Activity() {
                 </ListGroup.Item>
               ) : (
                 entries.map((entry) => (
-                  <ListGroup.Item key={entry.entryId} className="d-flex justify-content-between align-items-start py-3 border-bottom">
-                    <div className="ms-2 me-auto">
-                      <div className="fw-bold text-dark mb-1">{formatAction(entry.action)}</div>
-                      <div className="text-muted small">
-                        {new Date(entry.timestamp).toLocaleString()}
-                      </div>
+                  <ListGroup.Item key={entry.entryId} className="d-flex justify-content-between align-items-center py-3 border-bottom">
+                    <div className="ms-2 me-auto fw-bold text-dark">
+                      {formatAction(entry.action)}
                     </div>
-                    <Badge bg="light" text="secondary" className="border fw-normal mt-1 px-2 py-1">
-                      {entry.ipAddress || 'System'}
-                    </Badge>
+                    {/* The IP address is deliberately not shown. It is still
+                        recorded on every entry for forensics, but it is noise
+                        to the person reading their own history — what they
+                        need is what happened and when. */}
+                    <div className="text-muted small text-nowrap ms-3">
+                      {new Date(entry.timestamp).toLocaleString()}
+                    </div>
                   </ListGroup.Item>
                 ))
               )}
