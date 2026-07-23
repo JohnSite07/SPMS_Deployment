@@ -101,7 +101,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return false;
   }
-
+});
 
 // Listen for messages from background.js asking for credentials
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
