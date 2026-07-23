@@ -50,6 +50,8 @@ These items were found reading the full PDF against the rest of this repo's docs
 
 4. ~~**Login/2FA as one wireframe vs. two screens.**~~ **Resolved, client-only.** Figure 9 (Part I §2) shows master password and 2FA code as fields on a single wireframe, referenced above as one of the "six wireframes." [PRD 0023](../action_plan/0023-two-step-login-screens.md) splits the built client into two screens/routes — `/login` (master password) and `/login/2fa` (code), with an in-memory handoff and no password-only endpoint — to match the two-step flow the design's own "Login & 2FA flow" narrative already describes. No Part I/II/IV change; see [ui-ux-guidelines.md](ui-ux-guidelines.md#login--2fa-flow-23) for the reconciliation.
 
+5. ~~**Bottom-tab navigation vs. left side panel.**~~ **Resolved, client-only.** Figure 7 (Part I §2) draws the four post-login destinations (Vault / Documents / Health / Activity) as a fixed bottom tab bar. The built client instead renders them as a persistent left sidebar on md-and-larger screens, collapsing below md into a header hamburger button that opens a react-bootstrap `Offcanvas` drawer — see [`Layout.jsx`](../../client/src/components/Layout.jsx). This was a deliberate placement change at the user's request, not a Part I/II/IV change: the navigation *map* Figure 7 specifies (same four destinations, one tap from the Vault Dashboard hub, same returns) is unchanged, only the nav's placement/affordance differs. See [ui-ux-guidelines.md](ui-ux-guidelines.md#navigation-map-22) for the reconciliation.
+
 ## Cross-links
 
 - [architecture/overview.md](overview.md) — this repo's owned Part III shape (unaffected by the above).

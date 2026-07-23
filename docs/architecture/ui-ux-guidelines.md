@@ -16,7 +16,7 @@ The interface follows standard usability heuristics, extended with a secure-by-d
 | Consistency and standards | A shared header, button styles, and iconography across all screens — see [ADR 0011](../decisions/0011-design-system-baseline.md), the design-system baseline that implements this. |
 | Error prevention | Field validation before save, a live strength meter, and stated file type/size limits stop errors before they happen. |
 | Recognition over recall | Inline colour-coded health status, search, and a single headline score remove the need to remember details. |
-| Flexibility and efficiency | Flat bottom navigation and an inline generator keep every core task within three clicks. |
+| Flexibility and efficiency | A persistent navigation panel (see the reconciliation note below) and an inline generator keep every core task within three clicks. |
 | Aesthetic and minimalist design | Each screen shows only the fields its task requires. |
 | Help users recover from errors | Non-security errors explain the exact cause and fix — e.g. a rejected file states the size limit. |
 | Secure by default (domain-specific) | Secrets are masked by default; copied rather than displayed, with the clipboard cleared after 30 seconds (§4 refinement); irreversible actions require confirmation. |
@@ -27,6 +27,8 @@ After the two-step login, the **Vault Dashboard** is the hub: every core task is
 
 - The password **generator opens from the credential form** (not a standalone destination).
 - **Inactivity beyond ten minutes — or logout —** returns to login.
+
+**Reconciling with the PDF wireframe:** Figure 7 (Part I §2) draws the four post-login destinations (Vault / Documents / Health / Activity) as a fixed **bottom tab bar**. The built client instead renders them as a **left side navigation panel** — a persistent ~220px sidebar on md-and-larger screens, collapsing below md into a header hamburger button that opens a react-bootstrap `Offcanvas` drawer sliding in from the left — see [`Layout.jsx`](../../client/src/components/Layout.jsx) (`SideNavLinks`, shared by both the sidebar and the drawer so they can't drift from each other). This is a deliberate, client-only divergence at the user's request. The *map* Figure 7 specifies — the same four destinations, each one tap from the hub, returning to it — is unchanged; only the *placement/affordance* of the nav differs, the same kind of reconciliation as the login/2FA screen split below.
 
 ## Login & 2FA flow (§2.3)
 
