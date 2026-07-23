@@ -50,6 +50,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 ### Deployment
 - [GCP one-time bootstrap](deployment/gcp-setup.md) — project/billing setup, API enablement, Terraform state bucket, `terraform init` pattern.
 - [CI/CD pipeline](deployment/pipeline.md) — `ci.yml`/`cd.yml` stages, branch protection, Actions variables, and the platform quirks hit building it.
+- [Document storage](deployment/document-storage.md) — the storage contract for encrypted document upload: proxy-through-app model, ADC auth, `DOCUMENTS_BUCKET`, ciphertext-in-GCS/metadata-in-MySQL, and the no-auto-expiry retention behaviour.
 
 ### Runbooks
 - [Stop / start Cloud SQL](runbooks/stop-start-cloud-sql.md) — the #1 cost lever between work sessions.
@@ -58,6 +59,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [Roll back a Cloud Run revision](runbooks/rollback.md) — manual traffic re-pointing and re-running a failed CD run.
 - [Rotate a secret](runbooks/secret-rotation.md) — add a Secret Manager version and get running instances to pick it up.
 - [Enable / flip back Cloud SQL public IP](runbooks/db-public-access.md) — the dev-phase toggle from [ADR 0005](decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md); the flip-back is a required pre-presentation step.
+- [Document storage smoke test](runbooks/document-storage-smoke-test.md) — verify the runtime SA can write/read/delete in the document bucket: an IAM-policy check plus an impersonation smoke test (with its temporary-grant caveat).
 
 ### Guides
 - [Developer handover](guides/developer-handover.md) — placeholder-valued onboarding guide for the Developer team: quick start, endpoints, DB access, credentials, env contract, ship process, open decisions, cost etiquette.

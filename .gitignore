@@ -29,6 +29,7 @@ crash.log
 crash.*.log
 *.tfplan
 tfplan
+tfplan.*
 backend.hcl
 
 # Google Cloud credentials — must never enter the repo
