@@ -48,6 +48,8 @@ These items were found reading the full PDF against the rest of this repo's docs
 
 3. ~~**React/Vite frontend.**~~ **Resolved.** Part IV §8.1 states the deployed application under test has a "frontend (React/Vite), backend (Node.js/Express), and database (MySQL)" — a frontend framework not mentioned anywhere else in the repo docs or Parts I–III at the time this item was first raised. It is now confirmed and implemented: React/Vite under `client/` ([PRD 0010](../action_plan/0010-react-frontend-scaffold.md)), served by the Express app on Cloud Run and built as part of the Docker image and `ci.yml` ([ADR 0009](../decisions/0009-frontend-stack-and-serving-model.md), [PRD 0011](../action_plan/0011-frontend-serving-and-cd-integration.md)). See [deployment/README.md](../deployment/README.md) and [deployment/pipeline.md](../deployment/pipeline.md) for the as-built pipeline shape.
 
+4. ~~**Login/2FA as one wireframe vs. two screens.**~~ **Resolved, client-only.** Figure 9 (Part I §2) shows master password and 2FA code as fields on a single wireframe, referenced above as one of the "six wireframes." [PRD 0023](../action_plan/0023-two-step-login-screens.md) splits the built client into two screens/routes — `/login` (master password) and `/login/2fa` (code), with an in-memory handoff and no password-only endpoint — to match the two-step flow the design's own "Login & 2FA flow" narrative already describes. No Part I/II/IV change; see [ui-ux-guidelines.md](ui-ux-guidelines.md#login--2fa-flow-23) for the reconciliation.
+
 ## Cross-links
 
 - [architecture/overview.md](overview.md) — this repo's owned Part III shape (unaffected by the above).
