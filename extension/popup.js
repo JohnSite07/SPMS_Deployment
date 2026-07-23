@@ -61,8 +61,9 @@ document.addEventListener('DOMContentLoaded', () => {
               chrome.tabs.sendMessage(currentTab.id, {
                 type: 'FILL_CREDENTIAL',
                 credential: cred
+              }, () => {
+                window.close(); // Close the popup after message is sent
               });
-              window.close(); // Close the popup
             });
             
             credentialsList.appendChild(item);
