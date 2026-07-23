@@ -305,32 +305,60 @@ export default function Credentials() {
     }
   }
 
-  async function handleReveal() {
+  // Decrypts the viewed item's password once and caches it in viewPlaintext,
+  // so both Reveal and Copy can share it without re-decrypting. Returns the
+  // plaintext, or null if decryption failed (the error is surfaced then).
+  async function ensureViewPlaintext() {
+    if (viewPlaintext != null) {
+      return viewPlaintext;
+    }
     if (!viewItem) {
-      return;
+      return null;
     }
     setViewDecryptError(null);
     try {
       const plaintext = await decryptField(vaultKeyStore.getVaultKey(), viewItem.encryptedPassword);
       setViewPlaintext(plaintext);
-      setViewRevealed(true);
+      return plaintext;
     } catch {
       // A GCM auth failure (wrong key, tampered/corrupted ciphertext) is
       // never shown as garbage text — see decryptField's own comment.
       setViewDecryptError(DECRYPT_FAILURE_MESSAGE);
+      return null;
     }
   }
 
-  async function handleCopyPassword() {
-    if (!viewPlaintext) {
+  // Toggle: hides if currently shown, otherwise decrypts (once) and reveals.
+  // Previously this only ever revealed, so the "Hide" button re-decrypted and
+  // stayed open — clicking Hide now genuinely masks the field again.
+  async function handleReveal() {
+    if (!viewItem) {
       return;
     }
+    if (viewRevealed) {
+      setViewRevealed(false);
+      return;
+    }
+    const plaintext = await ensureViewPlaintext();
+    if (plaintext != null) {
+      setViewRevealed(true);
+    }
+  }
+
+  // Copy works whether the password is masked or revealed: it decrypts on
+  // demand if needed (frontend rule 6 — "copy rather than display"), and does
+  // not change the reveal state, so copying never forces the secret on screen.
+  async function handleCopyPassword() {
     const clipboard = window.navigator?.clipboard;
     if (!clipboard || typeof clipboard.writeText !== 'function') {
       return;
     }
+    const plaintext = await ensureViewPlaintext();
+    if (plaintext == null) {
+      return;
+    }
     try {
-      await clipboard.writeText(viewPlaintext);
+      await clipboard.writeText(plaintext);
     } catch {
       return;
     }
@@ -338,7 +366,7 @@ export default function Credentials() {
     if (viewClipboardTimer.current) {
       clearTimeout(viewClipboardTimer.current);
     }
-    const copiedValue = viewPlaintext;
+    const copiedValue = plaintext;
     viewClipboardTimer.current = setTimeout(async () => {
       try {
         // Only clear the clipboard if it still holds the value we put there
@@ -716,7 +744,6 @@ export default function Credentials() {
                       variant="outline-secondary"
                       type="button"
                       onClick={handleCopyPassword}
-                      disabled={!viewRevealed}
                     >
                       {viewCopied ? 'Copied' : 'Copy'}
                     </Button>
