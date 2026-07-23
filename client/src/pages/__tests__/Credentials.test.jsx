@@ -274,6 +274,59 @@ describe('Credentials screen (PRD 0019)', () => {
     expect(window.navigator.clipboard.writeText).not.toHaveBeenLastCalledWith('');
   });
 
+  it('view: copies the password while it is still masked, without revealing it', async () => {
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    const item = { itemId: 'i1', title: 'Email', url: '', username: '', encryptedPassword: 'CIPHER1==' };
+    listCredentials.mockResolvedValueOnce([item]);
+    getCredential.mockResolvedValueOnce(item);
+    // #1 is the mount-time analysis decrypt; #2 is the on-demand decrypt the
+    // Copy button performs even though Reveal was never clicked.
+    decryptField.mockResolvedValueOnce('irrelevant-for-analysis').mockResolvedValueOnce('hunter2');
+
+    renderPage();
+    await screen.findByText('Email');
+    fireEvent.click(screen.getByRole('button', { name: 'Email' }));
+    await waitFor(() => expect(getCredential).toHaveBeenCalled());
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(1));
+
+    // Copy without ever revealing.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^copy$/i }));
+    });
+
+    expect(window.navigator.clipboard.writeText).toHaveBeenCalledWith('hunter2');
+    // The field stays masked — copying must never force the secret on screen.
+    expect(screen.getByDisplayValue('••••••••••••')).toBeTruthy();
+    expect(screen.queryByDisplayValue('hunter2')).toBeNull();
+  });
+
+  it('view: reveal then hide masks the password again (toggle), without re-decrypting', async () => {
+    vaultKeyStore.setVaultKey(FAKE_KEY);
+    const item = { itemId: 'i1', title: 'Email', url: '', username: '', encryptedPassword: 'CIPHER1==' };
+    listCredentials.mockResolvedValueOnce([item]);
+    getCredential.mockResolvedValueOnce(item);
+    decryptField.mockResolvedValueOnce('irrelevant-for-analysis').mockResolvedValueOnce('hunter2');
+
+    renderPage();
+    await screen.findByText('Email');
+    fireEvent.click(screen.getByRole('button', { name: 'Email' }));
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(1));
+
+    // Reveal → shows plaintext (decrypt #2).
+    fireEvent.click(screen.getByRole('button', { name: /reveal/i }));
+    expect(await screen.findByDisplayValue('hunter2')).toBeTruthy();
+    await waitFor(() => expect(decryptField).toHaveBeenCalledTimes(2));
+
+    // Hide → masks again.
+    fireEvent.click(screen.getByRole('button', { name: /hide/i }));
+    expect(await screen.findByDisplayValue('••••••••••••')).toBeTruthy();
+
+    // Reveal again → reuses the cached plaintext, no third decrypt call.
+    fireEvent.click(screen.getByRole('button', { name: /reveal/i }));
+    expect(await screen.findByDisplayValue('hunter2')).toBeTruthy();
+    expect(decryptField).toHaveBeenCalledTimes(2);
+  });
+
   it('edit: only sends encryptedPassword when a new password was typed', async () => {
     vaultKeyStore.setVaultKey(FAKE_KEY);
     const item = {
