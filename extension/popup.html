@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SecureVault Autofill</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="icon48.png" alt="SecureVault Logo" class="logo" onerror="this.style.display='none'">
+      <h1>SecureVault</h1>
+    </div>
+    
+    <div class="status-card" id="statusCard">
+      <div class="status-indicator" id="statusIndicator"></div>
+      <p id="statusText">Checking connection...</p>
+    </div>
+
+    <div class="info">
+      <p>Log in to your <a href="#" id="openVaultLink">SecureVault webapp</a> and keep the tab open to enable password autofill.</p>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

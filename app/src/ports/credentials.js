@@ -125,6 +125,20 @@ function createCredentialsPort({ pool = getPool(), transaction = sharedTransacti
       return fetchOwned(pool, { userId, itemId });
     },
 
+    async list({ userId }) {
+      const [rows] = await pool.execute(
+        `SELECT vi.item_id, v.user_id, vi.title, vi.created_at, vi.updated_at,
+                c.url, c.username, c.encrypted_password
+           FROM VAULT_ITEMS vi
+           JOIN CREDENTIALS c ON c.item_id = vi.item_id
+           JOIN VAULTS v ON v.vault_id = vi.vault_id
+          WHERE v.user_id = ?
+          ORDER BY vi.title ASC`,
+        [userId]
+      );
+      return rows.map(mapRow);
+    },
+
     async update(tx, { userId, itemId, patch }) {
       const [ownedRows] = await tx.execute(
         `SELECT vi.item_id

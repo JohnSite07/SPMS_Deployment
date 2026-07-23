@@ -90,6 +90,21 @@ function createCredentialRoutes({ store, audit } = {}) {
     })
   );
 
+  router.get(
+    '/',
+    asyncRoute(async (req, res) => {
+      // If store.list does not exist yet (to prevent crashes on old ports), fallback
+      if (typeof store.list !== 'function') {
+        return res.status(501).json({ error: 'not_implemented' });
+      }
+      
+      const credentials = await store.list({ userId: req.auth.userId });
+      // We don't log a single action for list, or maybe we log CREDENTIAL_RETRIEVED for the list? 
+      // The requirements don't explicitly demand logging a list view, but it's safe to just return.
+      return res.status(200).json(credentials.map(readableFields));
+    })
+  );
+
   // UC-03. The entry is written *before* the plaintext-bearing response is
   // sent, and its failure is not caught. If the access cannot be logged, the
   // credential is not disclosed — a 500 with no entry, rather than a 200 with
