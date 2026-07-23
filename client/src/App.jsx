@@ -15,6 +15,7 @@ import PasswordHealth from './pages/PasswordHealth.jsx';
 import Activity from './pages/Activity.jsx';
 import NotFound from './pages/NotFound.jsx';
 import { setRedirectHandler } from './services/session.js';
+import ExtensionBridge from './components/ExtensionBridge.jsx';
 
 // Route table for the core use-case screens (docs/requirements/
 // functional-requirements.md UC-01..UC-05) plus a 404 catch-all.
@@ -62,6 +63,7 @@ export default function App() {
       <Route
         element={
           <RequireAuth>
+            <ExtensionBridge />
             <Layout />
           </RequireAuth>
         }
