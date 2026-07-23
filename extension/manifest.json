@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "SecureVault Autofill",
+  "version": "1.0",
+  "description": "Autofills passwords using the SecureVault password manager.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

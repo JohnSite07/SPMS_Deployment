@@ -1,0 +1,84 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
+  width: 320px;
+}
+
+.container {
+  padding: 20px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+  color: #1e293b;
+}
+
+.status-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  margin-bottom: 20px;
+}
+
+.status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #cbd5e1; /* default gray */
+}
+
+.status-indicator.connected {
+  background-color: #10b981; /* green */
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+}
+
+.status-indicator.disconnected {
+  background-color: #ef4444; /* red */
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
+}
+
+#statusText {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.info {
+  font-size: 0.85rem;
+  color: #64748b;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.info a {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.info a:hover {
+  text-decoration: underline;
+}
