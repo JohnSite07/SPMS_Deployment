@@ -33,12 +33,12 @@ export default function ExtensionBridge() {
             try {
               // Ensure we have a valid URL format for parsing
               const urlStr = item.url.startsWith('http') ? item.url : `https://${item.url}`;
-              const itemHostname = new URL(urlStr).hostname;
+              const itemHostname = new window.URL(urlStr).hostname;
               
               // Match if the vault item's hostname is a subdomain of the current site
               // OR if the current site is a subdomain of the vault item's root domain
               return domain.endsWith(itemHostname) || itemHostname.endsWith(rootDomain);
-            } catch (e) {
+            } catch {
               // Fallback to basic string match if URL parsing fails
               return item.url.toLowerCase().includes(rootDomain.toLowerCase());
             }
