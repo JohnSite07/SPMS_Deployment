@@ -23,11 +23,26 @@ export default function ExtensionBridge() {
 
         try {
           const items = await listCredentials();
-          // Find credentials that match the domain
-          // A real implementation would parse the URL properly, but this is a simple check
-          const matchingItems = items.filter(item => 
-            item.url && item.url.toLowerCase().includes(domain.toLowerCase())
-          );
+          // A real implementation would use a library like psl to get the exact root domain,
+          // but for this simple extension we'll do a basic subdomain check
+          const domainParts = domain.split('.');
+          const rootDomain = domainParts.length >= 2 ? domainParts.slice(-2).join('.') : domain;
+
+          const matchingItems = items.filter(item => {
+            if (!item.url) return false;
+            try {
+              // Ensure we have a valid URL format for parsing
+              const urlStr = item.url.startsWith('http') ? item.url : `https://${item.url}`;
+              const itemHostname = new window.URL(urlStr).hostname;
+              
+              // Match if the vault item's hostname is a subdomain of the current site
+              // OR if the current site is a subdomain of the vault item's root domain
+              return domain.endsWith(itemHostname) || itemHostname.endsWith(rootDomain);
+            } catch {
+              // Fallback to basic string match if URL parsing fails
+              return item.url.toLowerCase().includes(rootDomain.toLowerCase());
+            }
+          });
 
           // Decrypt passwords for matching items
           const credentials = await Promise.all(matchingItems.map(async (item) => {

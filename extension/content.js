@@ -4,8 +4,11 @@
 
 // --- 1. NORMAL PAGE LOGIC ---
 function detectAndFillForms() {
-  const passwordInputs = document.querySelectorAll('input[type="password"]');
+  const passwordInputs = document.querySelectorAll('input[type="password"]:not([data-sv-filled="true"])');
   if (passwordInputs.length === 0) return;
+
+  // Mark them as filled immediately to prevent multiple requests while waiting for the response
+  passwordInputs.forEach(input => input.dataset.svFilled = 'true');
 
   // Found a login form. Request credentials from background.
   chrome.runtime.sendMessage(
@@ -36,6 +39,20 @@ function detectAndFillForms() {
 
 // Run the detection on load
 window.addEventListener('load', detectAndFillForms);
+
+// Also watch for dynamically added password fields (for multi-step auth pages like Google/Microsoft)
+const observer = new MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    if (mutation.addedNodes.length > 0) {
+      const hasUnfilledPassword = document.querySelector('input[type="password"]:not([data-sv-filled="true"])');
+      if (hasUnfilledPassword) {
+        detectAndFillForms();
+      }
+    }
+  }
+});
+
+observer.observe(document.body, { childList: true, subtree: true });
 
 
 // --- 2. SECUREVAULT WEBAPP LOGIC ---
