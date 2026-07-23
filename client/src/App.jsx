@@ -5,6 +5,7 @@ import PublicLayout from './components/PublicLayout.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 import Welcome from './pages/Welcome.jsx';
 import Login from './pages/Login.jsx';
+import TwoFactorVerify from './pages/TwoFactorVerify.jsx';
 import SignUp from './pages/SignUp.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import TwoFactorSetup from './pages/TwoFactorSetup.jsx';
@@ -47,7 +48,11 @@ export default function App() {
       {/* Public: reachable without a session, no bottom-nav / logout chrome. */}
       <Route element={<PublicLayout />}>
         <Route path="welcome" element={<Welcome />} />
+        {/* UC-01 is two screens: master password (step 1) then the 2FA code
+            (step 2). /login/2fa is only reachable with a step-1 handoff in
+            memory — it redirects back to /login otherwise. */}
         <Route path="login" element={<Login />} />
+        <Route path="login/2fa" element={<TwoFactorVerify />} />
         <Route path="signup" element={<SignUp />} />
         <Route path="forgot-password" element={<ForgotPassword />} />
         <Route path="2fa-setup" element={<TwoFactorSetup />} />
