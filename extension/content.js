@@ -79,6 +79,30 @@ window.addEventListener('message', (event) => {
   }
 });
 
+// Listen for messages from the popup asking to fill a specific credential
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === 'FILL_CREDENTIAL') {
+    const cred = request.credential;
+    const passwordInputs = document.querySelectorAll('input[type="password"]');
+    
+    passwordInputs.forEach((pwdInput) => {
+      pwdInput.value = cred.password;
+      pwdInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      const form = pwdInput.closest('form');
+      if (form) {
+        // More robust username input finding
+        const userInput = form.querySelector('input:not([type="password"]):not([type="hidden"]):not([type="submit"])');
+        if (userInput && cred.username) {
+          userInput.value = cred.username;
+          userInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+    });
+    return false;
+  }
+
+
 // Listen for messages from background.js asking for credentials
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'GET_CREDENTIALS_FOR_DOMAIN') {
