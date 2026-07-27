@@ -32,6 +32,13 @@ export default [
         TextDecoder: 'readonly',
         btoa: 'readonly',
         atob: 'readonly',
+        // Secure Document Vault (PRD 0025) — binary upload/download and the
+        // save-as-file flow in Documents.jsx.
+        FormData: 'readonly',
+        Blob: 'readonly',
+        File: 'readonly',
+        URL: 'readonly',
+        HTMLAnchorElement: 'readonly',
       },
     },
     settings: {

@@ -42,7 +42,7 @@ The app must read the bucket name from the **`DOCUMENTS_BUCKET`** environment va
 
 **Cloud Storage holds opaque ciphertext blobs only. MySQL holds metadata and an object-key reference — never the blob.** This reconciles the historical disagreement between this repo's [architecture/overview.md](../architecture/overview.md) (Cloud Storage) and the Milestone 4 database design's `SECURE_DOCUMENTS.encrypted_blob LONGBLOB` column (Cloud SQL) — see [architecture/system-design-summary.md](../architecture/system-design-summary.md#open-cross-team-items--known-inconsistencies) item 1 — in favour of Cloud Storage.
 
-The full schema and code-level decision (object-key format, the `SECURE_DOCUMENTS` row shape, the storage-boundary ADR) is [PRD 0025](../action_plan/0025-secure-document-code-implementation.md)'s job — this doc only fixes the infrastructure contract PRD 0025 builds against.
+The full schema and code-level decision (object-key format, the `SECURE_DOCUMENTS` row shape, the two-system consistency model) shipped in [PRD 0025](../action_plan/0025-secure-document-code-implementation.md) and is recorded as [ADR 0017](../decisions/0017-secure-document-ciphertext-in-cloud-storage.md) — this doc only states the infrastructure contract PRD 0025 built against.
 
 ## Retention: documents persist until the user deletes them
 
@@ -67,7 +67,8 @@ See [runbooks/document-storage-smoke-test.md](../runbooks/document-storage-smoke
 ## Related
 
 - [PRD 0024](../action_plan/0024-secure-document-storage-infra-and-handoff.md) — the infra PRD this doc is the hand-off for.
-- [PRD 0025](../action_plan/0025-secure-document-code-implementation.md) — the code implementation this contract unblocks.
+- [PRD 0025](../action_plan/0025-secure-document-code-implementation.md) — the code implementation this contract unblocked.
+- [ADR 0017](../decisions/0017-secure-document-ciphertext-in-cloud-storage.md) — the storage-location decision and schema/consistency-model this contract feeds into.
 - [architecture/overview.md](../architecture/overview.md) — runtime topology, including "Encrypted document blobs go to Cloud Storage."
 - [guides/developer-handover.md](../guides/developer-handover.md#env-contract) — the full env-var contract, including `DOCUMENTS_BUCKET`.
 - [runbooks/document-storage-smoke-test.md](../runbooks/document-storage-smoke-test.md) — verification runbook.

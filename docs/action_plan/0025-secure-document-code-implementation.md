@@ -4,7 +4,7 @@ Build the SecureDocument half of the vault: encrypt a file on the user's device,
 
 | | |
 | --- | --- |
-| **Status** | Draft (awaiting approval) |
+| **Status** | Done |
 | **Date** | 2026-07-23 |
 | **Author** | Main session (orchestrator) — code deliverable, prepared for the developer team to execute; pairs with infra PRD [0024](0024-secure-document-storage-infra-and-handoff.md) |
 
@@ -160,4 +160,24 @@ npm run lint && npm test && npm run build
 
 ## Outcome
 
-_Filled in after execution: what shipped vs. scope, deviations, test counts, and links to the storage ADR + reconciled `DATABASE.md`._
+Shipped as planned. Gates green: app `npm run lint` clean, `npm test` **625 passed / 1 skipped**; client `npm run lint` clean, `npm test` **188 passed**, `npm run build` OK. All tests hermetic — the in-memory blob store, never real GCS.
+
+**Backend** — migration `app/db/migrations/0004_secure_documents.sql` (new `SECURE_DOCUMENTS`: metadata + `object_key`, per the reconciliation below); `app/src/ports/blob-store.js` (new: `createGcsBlobStore()` on Application Default Credentials, `createInMemoryBlobStore()` for tests/dev); `app/src/ports/documents.js` (new: class-table-inheritance metadata port, mirrors `ports/credentials.js`); `app/src/routes/documents.js` (new: `POST`/`GET`/`GET :itemId`/`DELETE` on `/api/documents`). Two new audit actions, `DOCUMENT_DELETED` and `DOCUMENTS_LISTED` (`DOCUMENT_STORED`/`DOCUMENT_RETRIEVED` already existed in the closed vocabulary, reused rather than duplicated). Wired into `app.js`/`server.js`. New deps: `@google-cloud/storage@^7`, `multer@^2`.
+
+**Frontend** — `client/src/pages/Documents.jsx` (the Figure 13 screen: list/upload/download/delete), `client/src/services/document-crypto.js` (binary AES-256-GCM, extending `vault-crypto.js`'s primitives), `client/src/services/document-service.js` (all calls through `api-client.js`). `api-client.js` gained `postMultipart`/`getBinary` methods rather than any raw `fetch` bypass. `vault-crypto.js` gained binary `encryptBytes`/`decryptBytes` alongside its existing string `encryptField`/`decryptField`.
+
+**Storage-location decision, recorded as an ADR:** [ADR 0017](../decisions/0017-secure-document-ciphertext-in-cloud-storage.md) — Cloud Storage for the ciphertext blob, MySQL for metadata + `object_key` only, superseding `DATABASE.md`'s original `encrypted_blob LONGBLOB`/`file_iv`/`file_tag` design. `DATABASE.md`'s `SECURE_DOCUMENTS` DDL, seed data, and query catalogue are reconciled to the shipped shape in the same change, with pointers back to the ADR. `docs/architecture/domain-model.md` and `docs/architecture/system-design-summary.md` updated to stop describing document upload as unbuilt / the storage boundary as open.
+
+**Deviations from the plan, none scope/cost/security-changing:**
+- **`multer@^2`, not the `^1.4.5-lts` line** — 2.x was current at implementation time and closes CVEs the 1.x line carries; no API-shape impact on this router.
+- **`app/src/config/unimplemented-ports.js` left untouched** — verified unreferenced/stale scaffold rather than the real wiring point (the documents/blob-store ports are wired directly in `app.js`/`server.js`). Flagged as tech-debt: dead code, not edited here since editing unrelated dead code was out of this PRD's scope.
+- **Two-layer compensating delete** — `ports/documents.js`'s `add()` compensates for a failed INSERT itself, and `routes/documents.js`'s `POST` handler adds a second, outer catch around the whole transaction (including the audit-entry write) so a later failure in the same call still can't orphan the blob. Slightly more defensive than the PRD's single-layer description; not a scope change.
+- **`VAULT_ITEMS.title` is set to the uploaded `fileName`** — there is no separate document title field, matching the credential vault's use of `VAULT_ITEMS.title` for its own display name.
+- **Upload auto-starts on file selection** — there is no separate "Add" step/form, because a document has no metadata to fill in beyond the file itself (name/type/size are read from the file). Selecting a file immediately encrypts and uploads it.
+- **Empty files (0 KB) are rejected client-side** — `file_size_kb`'s `CHECK BETWEEN 1 AND 10240` requires at least 1, so a 0-byte file is refused before it is ever encrypted or sent, rather than surfacing as a confusing server-side 400.
+
+**Security review (infra-reviewer, step 3): PASS-WITH-NITS.** All ten zero-knowledge / security properties verified with test evidence: no plaintext server-side (the app only moves opaque bytes; nothing decrypts server-side); the client encrypts before the multipart body is built (ciphertext-on-wire asserted); ADC-only GCS auth with the bucket from `DOCUMENTS_BUCKET` (no key file, no hardcoded bucket); ownership enforced by the `VAULTS.user_id` join on list/get/delete (cross-user access → 404, never an oracle); 10 MB + PDF/PNG/JPEG enforced server-side independent of the client; compensating delete leaves no orphan blob (tested at both the port and route layers); wrong-key/tampered decrypt fails closed (GCM auth error, never garbage); all four audit actions written once each, before disclosure; `object_key` is a random UUID never serialized to the client; no secrets committed and the `fetch`/web-storage bans still hold.
+
+One **HIGH** finding was raised and **fixed in this PRD** before merge: the download route streamed the blob back with a bare `doc.stream.pipe(res)` and no `error` listener — with the real GCS adapter a mid-stream failure (network blip, or a row whose backing object is missing) would emit `'error'` outside `asyncRoute`'s promise chain and crash the whole Cloud Run instance rather than failing the one request. Fixed in `routes/documents.js` by piping under an `error` handler that fails only that request (`502 blob_unavailable` if no bytes have flowed, else aborts the response); regression test added in `tests/document-download-stream-error.test.js`. That fix also surfaced and corrected a latent bug — `res.json()` does not override an already-set `Content-Type`, so the error body would have shipped mislabelled as `application/octet-stream`; the error branch now resets it to JSON. App suite is **627 passed / 1 skipped** after these two additions.
+
+The reviewer's remaining items are accepted follow-ups, not blockers: `file_size_kb` is client-reported metadata not cross-checked against the actual ciphertext length (bounded anyway by multer's byte cap; no current consumer of the invariant, single-user scale); and `asyncRoute` is imported from the sibling `routes/credentials.js` rather than a shared util (harmless; a `routes/util.js` extraction is a tidy-up for when a third route needs it). `file_type` remaining unverified client metadata (no magic-byte check) is the same accepted trade-off the PRD already scoped out.

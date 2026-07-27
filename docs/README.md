@@ -45,6 +45,7 @@ Structured documentation for the SecureVault deployment & DevOps project. The ta
 - [0014 — Password reset proves identity via TOTP, not an emailed link](decisions/0014-totp-based-password-reset.md)
 - [0015 — Vault-key derivation: direct KDF from the master password, email-derived salt](decisions/0015-vault-key-derivation-from-master-password.md)
 - [0016 — Client-side password health analysis: the server stores conclusions, not evidence](decisions/0016-client-side-password-health-analysis.md)
+- [0017 — Secure document ciphertext lives in Cloud Storage; MySQL holds metadata + `object_key` only](decisions/0017-secure-document-ciphertext-in-cloud-storage.md)
 - [ADR template](decisions/_template.md)
 
 ### Deployment

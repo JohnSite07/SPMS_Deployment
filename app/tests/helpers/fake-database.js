@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { ItemOwnershipError } = require('../../src/ports/password-health');
+const { createInMemoryBlobStore } = require('../../src/ports/blob-store');
 
 // One in-memory database behind every port, because that is how the real one
 // is shaped: a single MySQL instance whose transactions span the credential
@@ -13,6 +14,14 @@ const { ItemOwnershipError } = require('../../src/ports/password-health');
 function snapshot(state) {
   return {
     credentials: new Map([...state.credentials].map(([k, v]) => [k, { ...v }])),
+    // PRD 0025. Metadata only -- deliberately part of the snapshot/restore
+    // `state` a failed transaction rolls back, exactly like `credentials`
+    // above. The blob store is NOT part of this snapshot: a real blob write
+    // to Cloud Storage cannot be rolled back by a MySQL ROLLBACK either, and
+    // this fake models that gap on purpose (see the `documents` object below
+    // and routes/documents.js's compensating delete) rather than papering
+    // over it with an in-memory convenience.
+    documents: new Map([...state.documents].map(([k, v]) => [k, { ...v }])),
     entries: [...state.entries],
     sessions: new Map([...state.sessions].map(([k, v]) => [k, { ...v }])),
     revoked: new Set(state.revoked),
@@ -48,6 +57,10 @@ function createFakeDatabase({
 } = {}) {
   const state = {
     credentials: new Map(),
+    // PRD 0025 (UC-04/UC-06). Keyed by itemId, mirroring `credentials`
+    // above; each row also carries `objectKey`, the pointer into
+    // `documentsBlobStore` below.
+    documents: new Map(),
     entries: [],
     sessions: new Map(knownSessions.map((id) => [id, { sessionId: id, userId: 'user-42' }])),
     revoked: new Set(),
@@ -134,6 +147,76 @@ function createFakeDatabase({
       }
       state.credentials.delete(itemId);
       return true;
+    },
+  };
+
+  // PRD 0025's in-memory blob store, shared between add()/get()/remove()
+  // below exactly as the real documents port shares one `blobStore` (see
+  // ports/blob-store.js and ports/documents.js). Deliberately not part of
+  // `state`/`snapshot()` above -- see that comment for why.
+  const documentsBlobStore = createInMemoryBlobStore();
+
+  // Method-for-method identical to ports/documents.js's real shape, so
+  // routes/documents.js exercises the exact same contract over this fake as
+  // it does over the real MySQL + GCS adapters. `add()` writes the blob
+  // BEFORE the metadata row, matching the real port's order and its
+  // rationale (see ports/documents.js): only once the blob store has it can
+  // a failed transaction's rollback be compensated for. This fake does not
+  // itself compensate on a failed transaction() -- that is
+  // routes/documents.js's job (its POST handler catches the whole
+  // store.transaction(...) rejection and calls store.removeBlob()), and
+  // `failAppendOn: ACTIONS.DOCUMENT_STORED` is exactly how a test drives
+  // that path: the metadata insert below succeeds, transaction()'s
+  // snapshot/restore then rolls `state.documents` back when the audit
+  // append throws, and the blob written before that would be a silent
+  // orphan in `documentsBlobStore` if the route did not remove it.
+  const documents = {
+    transaction,
+    async add(tx, { userId, fileName, fileType, fileSizeKb, ciphertext }) {
+      const itemId = crypto.randomUUID();
+      const objectKey = crypto.randomUUID();
+      await documentsBlobStore.put(objectKey, ciphertext);
+
+      const now = new Date();
+      const doc = {
+        itemId,
+        userId,
+        fileName,
+        fileType,
+        fileSizeKb,
+        objectKey,
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.documents.set(itemId, doc);
+      return { ...doc };
+    },
+    // Ownership is checked here, in the store, not in the route -- business
+    // rule 6 holds even if a future route forgets to ask.
+    async list({ userId }) {
+      return [...state.documents.values()]
+        .filter((d) => d.userId === userId)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        .map((d) => ({ ...d }));
+    },
+    async get({ userId, itemId }) {
+      const doc = state.documents.get(itemId);
+      if (!doc || doc.userId !== userId) {
+        return null;
+      }
+      const stream = await documentsBlobStore.get(doc.objectKey);
+      return { ...doc, stream };
+    },
+    async remove(tx, { userId, itemId }) {
+      const doc = state.documents.get(itemId);
+      if (!doc || doc.userId !== userId) {
+        return null;
+      }
+      state.documents.delete(itemId);
+      return { objectKey: doc.objectKey };
+    },
+    async removeBlob(objectKey) {
+      return documentsBlobStore.remove(objectKey);
     },
   };
 
@@ -388,6 +471,11 @@ function createFakeDatabase({
     append,
     appendContexts,
     credentials,
+    documents,
+    // Test-only introspection of the blob half, mirroring `state` above --
+    // lets a test assert "no orphan blob" directly, e.g.
+    // `db.documentsBlobStore.size()`.
+    documentsBlobStore,
     sessions,
     users: users_,
     vaults,

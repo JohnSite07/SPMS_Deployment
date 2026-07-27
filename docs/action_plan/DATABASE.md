@@ -36,7 +36,7 @@ Run the SQL statements directly in your MySQL client (as the admin/migration use
 | 2   | `VAULTS`                  | `vault_id`             | 1:1 with USERS                      |
 | 3   | `VAULT_ITEMS`             | `item_id`              | supertype (class-table inheritance) |
 | 4   | `CREDENTIALS`             | `item_id`              | subtype; encrypted password         |
-| 5   | `SECURE_DOCUMENTS`        | `item_id`              | subtype; encrypted blob             |
+| 5   | `SECURE_DOCUMENTS`        | `item_id`              | subtype; metadata + `object_key` (ciphertext in Cloud Storage — see [ADR 0017](../decisions/0017-secure-document-ciphertext-in-cloud-storage.md)) |
 | 6   | `TWO_FACTOR_CONFIGS`      | `tfa_id`               | encrypted 2FA secret                |
 | 7   | `SESSIONS`                | `session_id`           | stateful revocation (no token hash) |
 | 8   | `AUDIT_ENTRIES`           | `entry_id`             | append-only                         |
@@ -44,11 +44,16 @@ Run the SQL statements directly in your MySQL client (as the admin/migration use
 | 10  | `REPORT_FINDINGS`         | `(report_id, item_id)` | junction (M:N)                      |
 | 11  | `SECURITY_ALERTS`         | `alert_id`             |                                     |
 
-**Secret storage:** credential passwords, document blobs, and 2FA secrets are
-stored as AES-256-GCM ciphertext, each with its own 12-byte IV and 16-byte auth
-tag. Master passwords are bcrypt/Argon2id hashes; session tokens are stateless
+**Secret storage:** credential passwords and 2FA secrets are stored in-database
+as AES-256-GCM ciphertext, each with its own 12-byte IV and 16-byte auth tag.
+**Document ciphertext is the exception** — it does not live in this schema at
+all: `SECURE_DOCUMENTS` holds only metadata and an opaque `object_key`
+referencing the encrypted blob in Cloud Storage, packed as one opaque
+IV+ciphertext+tag blob rather than separate columns (see
+[ADR 0017](../decisions/0017-secure-document-ciphertext-in-cloud-storage.md)).
+Master passwords are bcrypt/Argon2id hashes; session tokens are stateless
 JWTs revoked by `session_id` (no token hash stored — PRD 0014 / ADR 0007). No
-plaintext secrets are ever stored.
+plaintext secrets are ever stored, in this database or in Cloud Storage.
 
 ---
 
@@ -68,8 +73,11 @@ plaintext secrets are ever stored.
 --
 -- Security invariants encoded below:
 --   * Master password: salted hash only (Argon2id/bcrypt), never plaintext.
---   * Credential passwords, document blobs, 2FA secrets: AES-256-GCM ciphertext,
+--   * Credential passwords, 2FA secrets: AES-256-GCM ciphertext in-database,
 --     each with its own 12-byte IV (nonce) and 16-byte auth tag.
+--   * Document ciphertext: NOT in this database -- one opaque IV+ciphertext+tag
+--     blob per file in Cloud Storage, addressed by SECURE_DOCUMENTS.object_key
+--     (see ADR 0017 under docs/decisions/).
 --   * Session tokens: stateless JWTs, revoked by session_id (no hash stored).
 --
 -- Tables are created parent-before-child so the foreign keys resolve.
@@ -159,26 +167,35 @@ CREATE TABLE CREDENTIALS (
 
 -- -----------------------------------------------------------------------------
 -- 5. SECURE_DOCUMENTS  (subtype, shared PK with VAULT_ITEMS)
+--
+-- SUPERSEDED shape, as actually created by
+-- app/db/migrations/0004_secure_documents.sql — this section originally
+-- specified an in-database `encrypted_blob LONGBLOB` + `file_iv`/`file_tag`
+-- design (Milestone 4 Part II). PRD 0025 reconciled this in favour of Cloud
+-- Storage for the ciphertext blob: see ADR 0017 for the decision and
+-- rationale. Kept here (rewritten to match what shipped) so this catalogue
+-- doesn't describe a table that was never created.
 -- -----------------------------------------------------------------------------
 CREATE TABLE SECURE_DOCUMENTS (
-  item_id        INT           NOT NULL,
-  file_name      VARCHAR(255)  NOT NULL,
-  file_type      VARCHAR(50)   NOT NULL,
-  file_size_kb   INT           NOT NULL,
-  encrypted_blob LONGBLOB      NOT NULL,                    -- AES-256-GCM ciphertext
-  file_iv        VARBINARY(12) NOT NULL,                    -- GCM nonce
-  file_tag       VARBINARY(16) NOT NULL,                    -- GCM auth tag
+  item_id      INT           NOT NULL,
+  file_name    VARCHAR(255)  NOT NULL,
+  file_type    VARCHAR(50)   NOT NULL,
+  file_size_kb INT           NOT NULL,                          -- ORIGINAL plaintext size, not the ciphertext's
+  object_key   VARCHAR(255)  NOT NULL,                          -- opaque key into the documents bucket (PRD 0024); never parsed for ownership
   CONSTRAINT PK_SECURE_DOCUMENTS       PRIMARY KEY (item_id),
   CONSTRAINT FK_SECURE_DOCUMENTS_ITEMS FOREIGN KEY (item_id)
        REFERENCES VAULT_ITEMS(item_id) ON DELETE CASCADE,
-  CONSTRAINT CK_SECURE_DOCUMENTS_SIZE  CHECK (file_size_kb BETWEEN 1 AND 10240),  -- 10 MB rule
+  CONSTRAINT UQ_SECURE_DOCUMENTS_OBJECT_KEY UNIQUE (object_key),
+  CONSTRAINT CK_SECURE_DOCUMENTS_NAME  CHECK (CHAR_LENGTH(TRIM(file_name)) >= 1),
   CONSTRAINT CK_SECURE_DOCUMENTS_TYPE  CHECK (file_type IN
        ('application/pdf','image/png','image/jpeg')),
-  CONSTRAINT CK_SECURE_DOCUMENTS_NAME  CHECK (CHAR_LENGTH(TRIM(file_name)) >= 1),
-  CONSTRAINT CK_SECURE_DOCUMENTS_BLOB  CHECK (OCTET_LENGTH(encrypted_blob) >= 1),
-  CONSTRAINT CK_SECURE_DOCUMENTS_IV    CHECK (OCTET_LENGTH(file_iv)  = 12),  -- GCM nonce
-  CONSTRAINT CK_SECURE_DOCUMENTS_TAG   CHECK (OCTET_LENGTH(file_tag) = 16)   -- GCM auth tag
+  CONSTRAINT CK_SECURE_DOCUMENTS_SIZE  CHECK (file_size_kb BETWEEN 1 AND 10240)  -- 10 MB rule
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- No encrypted_blob/file_iv/file_tag columns: the client packs one opaque
+-- IV+ciphertext+tag blob per file (same scheme as CREDENTIALS.encrypted_password)
+-- and it is stored in Cloud Storage, addressed by object_key — see ADR 0017.
+-- Source of truth for this table: app/db/migrations/0004_secure_documents.sql.
 
 -- -----------------------------------------------------------------------------
 -- 6. TWO_FACTOR_CONFIGS  (0..1 per user)
@@ -374,10 +391,12 @@ INSERT INTO CREDENTIALS (item_id, url, username, encrypted_password, password_iv
   (4, 'https://console.aws.amazon.com', 'bob-ops', 0xCCDDEEFF001122334455, 0x0302030405060708090A0B0C, 0x301112131415161718191A1B1C1D1E1F),
   (6, 'https://mybank.example.com', 'carol', 0xDDEEFF00112233445566, 0x0402030405060708090A0B0C, 0x401112131415161718191A1B1C1D1E1F);
 
--- ---- 5. SECURE_DOCUMENTS (subtype; placeholder GCM ciphertext) ------------
-INSERT INTO SECURE_DOCUMENTS (item_id, file_name, file_type, file_size_kb, encrypted_blob, file_iv, file_tag) VALUES
-  (3, 'passport.pdf',     'application/pdf', 842,  0xEEFF00112233445566778899, 0x0502030405060708090A0B0C, 0x501112131415161718191A1B1C1D1E1F),
-  (5, 'tax-return-2024.pdf', 'application/pdf', 2048, 0xFF00112233445566778899AA, 0x0602030405060708090A0B0C, 0x601112131415161718191A1B1C1D1E1F);
+-- ---- 5. SECURE_DOCUMENTS (subtype; metadata + object_key — see ADR 0017) --
+-- object_key is an opaque crypto.randomUUID() in the real app; these seed
+-- values are illustrative placeholders, not real bucket objects.
+INSERT INTO SECURE_DOCUMENTS (item_id, file_name, file_type, file_size_kb, object_key) VALUES
+  (3, 'passport.pdf',        'application/pdf', 842,  '11111111-1111-4111-8111-111111111111'),
+  (5, 'tax-return-2024.pdf', 'application/pdf', 2048, '22222222-2222-4222-8222-222222222222');
 
 -- ---- 6. TWO_FACTOR_CONFIGS -------------------------------------------------
 INSERT INTO TWO_FACTOR_CONFIGS (tfa_id, user_id, method, secret_enc, secret_iv, secret_tag, enabled) VALUES
@@ -538,18 +557,35 @@ UPDATE CREDENTIALS SET url = ?, username = ? WHERE item_id = ?;
 
 
 -- ===== 5. SECURE_DOCUMENTS (subtype, shared PK) ============================
-INSERT INTO SECURE_DOCUMENTS (item_id, file_name, file_type, file_size_kb, encrypted_blob, file_iv, file_tag)
-  VALUES (?, ?, ?, ?, ?, ?, ?);
--- Metadata only (cheap listing — no blob)
-SELECT vi.item_id, vi.title, d.file_name, d.file_type, d.file_size_kb
-  FROM VAULT_ITEMS vi JOIN SECURE_DOCUMENTS d ON d.item_id = vi.item_id
- WHERE vi.vault_id = ? ORDER BY d.file_name;
--- Full row incl. encrypted blob (download)
-SELECT d.file_name, d.file_type, d.file_size_kb, d.encrypted_blob, d.file_iv, d.file_tag
-  FROM SECURE_DOCUMENTS d WHERE d.item_id = ?;
-UPDATE SECURE_DOCUMENTS
-   SET file_name = ?, file_type = ?, file_size_kb = ?, encrypted_blob = ?, file_iv = ?, file_tag = ?
- WHERE item_id = ?;
+-- Reconciled to the shipped shape (metadata + object_key, ciphertext in Cloud
+-- Storage — ADR 0017), not the original LONGBLOB catalogue entry. Actual
+-- queries: app/src/ports/documents.js (OWNED_DOC_QUERY / OWNED_DOCS_QUERY).
+INSERT INTO VAULT_ITEMS (vault_id, item_type, title) VALUES (?, 'DOCUMENT', ?);
+INSERT INTO SECURE_DOCUMENTS (item_id, file_name, file_type, file_size_kb, object_key)
+  VALUES (?, ?, ?, ?, ?);
+-- Metadata only (cheap listing — no blob store round trip), filtered through
+-- VAULTS.user_id (business rule 6), newest-updated-first:
+SELECT vi.item_id, v.user_id, vi.title, vi.created_at, vi.updated_at,
+       d.file_name, d.file_type, d.file_size_kb, d.object_key
+  FROM VAULT_ITEMS vi
+  JOIN SECURE_DOCUMENTS d ON d.item_id = vi.item_id
+  JOIN VAULTS v ON v.vault_id = vi.vault_id
+ WHERE v.user_id = ?
+ ORDER BY vi.updated_at DESC;
+-- Single document, same ownership join, `item_id` filter added (download /
+-- delete path): the row yields `object_key`, which the app then uses to
+-- fetch/remove the ciphertext object from the documents bucket — a second,
+-- separate call to the blob store, not part of this query.
+SELECT vi.item_id, v.user_id, vi.title, vi.created_at, vi.updated_at,
+       d.file_name, d.file_type, d.file_size_kb, d.object_key
+  FROM VAULT_ITEMS vi
+  JOIN SECURE_DOCUMENTS d ON d.item_id = vi.item_id
+  JOIN VAULTS v ON v.vault_id = vi.vault_id
+ WHERE vi.item_id = ? AND v.user_id = ?;
+-- Delete: delete the VAULT_ITEMS row (cascades to SECURE_DOCUMENTS), then
+-- remove the bucket object by its object_key -- DB row first, blob after
+-- commit is certain (see ADR 0017's two-system consistency model).
+DELETE FROM VAULT_ITEMS WHERE item_id = ?;
 
 
 -- ===== 6. TWO_FACTOR_CONFIGS ===============================================
@@ -643,7 +679,7 @@ DELETE FROM SECURITY_ALERTS WHERE alert_id = ?;
 
 ### Transactional patterns (class-table inheritance)
 
-Credentials and documents span two tables — create them in one transaction:
+Credentials span two tables in one MySQL transaction:
 
 ```sql
 -- Create a credential
@@ -653,8 +689,16 @@ INSERT INTO CREDENTIALS (item_id, url, username, encrypted_password, password_iv
      VALUES (LAST_INSERT_ID(), ?, ?, ?, ?, ?);
 COMMIT;
 
--- Create a document: same shape, item_type='DOCUMENT' then INSERT INTO SECURE_DOCUMENTS.
--- Delete either: DELETE FROM VAULT_ITEMS WHERE item_id = ?;  -- subtype row cascades.
+-- Delete: DELETE FROM VAULT_ITEMS WHERE item_id = ?;  -- subtype row cascades.
 ```
+
+**Documents are not the same pattern** — a document write also touches Cloud
+Storage, which no MySQL transaction can cover. `item_type='DOCUMENT'` then
+`INSERT INTO SECURE_DOCUMENTS` still runs inside a MySQL transaction, but the
+bucket object is written *before* that transaction starts (add) and the
+bucket object is only deleted *after* the transaction commits (delete). See
+[ADR 0017](../decisions/0017-secure-document-ciphertext-in-cloud-storage.md)
+for the full add/delete ordering and the compensating-delete logic in
+[`app/src/ports/documents.js`](../../app/src/ports/documents.js).
 
 ---
