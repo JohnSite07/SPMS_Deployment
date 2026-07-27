@@ -122,7 +122,7 @@ This is the exact set of environment variables Cloud Run injects into the runnin
 - `DB_PORT` — `3306`
 - `DB_NAME` — schema name (`securevault`)
 - `DB_USER` — app login username
-- `DOCUMENTS_BUCKET` — Cloud Storage bucket name for encrypted document blobs
+- `DOCUMENTS_BUCKET` — Cloud Storage bucket name for encrypted document blobs; see [deployment/document-storage.md](../deployment/document-storage.md) for the full storage contract (ADC auth, no new IAM/CORS, retention)
 
 **Secret-ref env vars** (resolved by Cloud Run from Secret Manager, never literal values in the service spec):
 - `DB_PASSWORD`
@@ -157,11 +157,11 @@ For Part IV test execution (the M4 System Test Plan, Developer/QA-owned — see 
 
 ## Open decisions they own
 
-These are Developer-team decisions, not resolved by DevOps — full context in [architecture/system-design-summary.md](../architecture/system-design-summary.md#open-cross-team-items--known-inconsistencies):
+These were Developer-team decisions, not resolved by DevOps — full context in [architecture/system-design-summary.md](../architecture/system-design-summary.md#open-cross-team-items--known-inconsistencies):
 
-1. **Document blob storage** — Cloud Storage bucket (already provisioned, `DOCUMENTS_BUCKET` env var ready) vs. `SECURE_DOCUMENTS.encrypted_blob LONGBLOB` in Cloud SQL (as the M4 database design specifies). No infra change either way; the bucket stays provisioned regardless. Still open — unbuilt as of [PRD 0019](../action_plan/0019-credential-vault-ui-and-encryption.md), which explicitly scoped `SecureDocument`/upload out for this reason.
+1. ~~**Document blob storage** — Cloud Storage bucket vs. `SECURE_DOCUMENTS.encrypted_blob LONGBLOB` in Cloud SQL.~~ **Resolved.** [PRD 0024](../action_plan/0024-secure-document-storage-infra-and-handoff.md) settled the infra side in favour of Cloud Storage and fixed the storage contract: proxy-through-app upload (no browser-to-GCS traffic, so no CORS/signed URLs needed), ADC auth (the runtime SA already has `objectAdmin` on the bucket, no key/credentials file needed in code), the bucket name via `DOCUMENTS_BUCKET`, and ciphertext-in-GCS/metadata-in-MySQL as the data split. Full contract: [deployment/document-storage.md](../deployment/document-storage.md). The bucket no longer auto-deletes documents after a retention period (that lifecycle rule was removed — see the same doc). [PRD 0025](../action_plan/0025-secure-document-code-implementation.md) then shipped the schema/route implementation — `SECURE_DOCUMENTS` as metadata + `object_key`, `POST`/`GET`/`GET :itemId`/`DELETE` on `/api/documents` — recorded as [ADR 0017](../decisions/0017-secure-document-ciphertext-in-cloud-storage.md).
 
-**Resolved, no longer open:** the **encryption boundary** question (server-side `CryptoService`/`AES_ENCRYPTION_KEY` per Parts I–III vs. client-side/end-to-end per Part IV's test cases) is settled for credentials — client-side, via `client/src/services/vault-crypto.js` deriving a key from the master password that the server never sees. See [ADR 0015](../decisions/0015-vault-key-derivation-from-master-password.md) and [PRD 0019](../action_plan/0019-credential-vault-ui-and-encryption.md). The server-side `AES_ENCRYPTION_KEY`/`services/crypto.js` path is still real and in use elsewhere (2FA secret encryption in `routes/two-factor.js`) — it's simply not the path credentials use. `SecureDocument`'s encryption boundary is still open, tied to item 1 above.
+**Resolved, no longer open:** the **encryption boundary** question (server-side `CryptoService`/`AES_ENCRYPTION_KEY` per Parts I–III vs. client-side/end-to-end per Part IV's test cases) is settled for both credentials and documents — client-side, via `client/src/services/vault-crypto.js`/`document-crypto.js` deriving a key from the master password that the server never sees. See [ADR 0015](../decisions/0015-vault-key-derivation-from-master-password.md), [PRD 0019](../action_plan/0019-credential-vault-ui-and-encryption.md), and [PRD 0025](../action_plan/0025-secure-document-code-implementation.md). The server-side `AES_ENCRYPTION_KEY`/`services/crypto.js` path is still real and in use elsewhere (2FA secret encryption in `routes/two-factor.js`) — it's simply not the path credentials or documents use.
 
 **Also resolved, no longer open:** the React/Vite frontend Part IV references is confirmed and built — a Vite/React 18 SPA under `client/`, served by the Express app on Cloud Run (same origin, no CORS) and built as a Docker multi-stage image, gated by a `client-checks` CI job. See [ADR 0009](../decisions/0009-frontend-stack-and-serving-model.md) and [PRD 0011](../action_plan/0011-frontend-serving-and-cd-integration.md). Pages under `client/src` are still placeholder scaffolding — feature and API-integration work is the Developer team's, not DevOps's.
 
@@ -188,3 +188,4 @@ This project runs inside a fixed $300 free-trial credit over a fixed window. A f
 - [decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md](../decisions/0005-temporary-public-ip-cloud-sql-dev-phase.md) — the temporary dev-phase override that makes the Auth Proxy CLI flow work.
 - [runbooks/db-public-access.md](../runbooks/db-public-access.md) — enable / flip-back steps for the temporary public IP.
 - [deployment/pipeline.md](../deployment/pipeline.md) · [runbooks/](../runbooks/) — everything referenced above, in full.
+- [deployment/document-storage.md](../deployment/document-storage.md) — the document-bucket storage contract (auth, env var, data split, retention).

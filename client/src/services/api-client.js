@@ -29,6 +29,44 @@ export class ApiError extends Error {
   }
 }
 
+// Shared by every request path below: captures the sliding-session refresh
+// headers (if present) and re-arms the auto-lock. Pulled out of request()
+// so postMultipart/getBinary (PRD 0025) get the exact same session-refresh
+// behaviour without duplicating it ad hoc.
+function captureRefreshedSession(res) {
+  const refreshedToken = res.headers.get('X-Session-Token');
+  if (refreshedToken) {
+    store.setToken(refreshedToken);
+    store.setExpiresAt(res.headers.get('X-Session-Expires-At'));
+    scheduleAutoLock();
+  }
+}
+
+// Shared error path: on a non-2xx response, parse whatever body is there,
+// end the session on a "session is over" 401 (fail-safe, before the error
+// propagates), and throw a typed ApiError. Does nothing (and does not touch
+// the body) on success, so callers remain free to read the body themselves.
+async function throwIfError(res) {
+  if (res.ok) {
+    return;
+  }
+  const text = await res.text();
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+  }
+  const error = payload && typeof payload === 'object' ? payload.error : undefined;
+  const description = payload && typeof payload === 'object' ? payload.error_description : undefined;
+  if (res.status === 401 && SESSION_ENDED_DESCRIPTIONS.has(description)) {
+    endSession();
+  }
+  throw new ApiError(res.status, error, description);
+}
+
 export async function request(method, path, { body, headers } = {}) {
   const outgoing = { Accept: 'application/json', ...headers };
   if (body !== undefined) {
@@ -48,16 +86,13 @@ export async function request(method, path, { body, headers } = {}) {
   // Sliding-session refresh: every authenticated response carries a renewed
   // token and a fresh expiry. Capture them from any response that has them and
   // re-arm the auto-lock, so an active user is never logged out mid-session.
-  const refreshedToken = res.headers.get('X-Session-Token');
-  if (refreshedToken) {
-    store.setToken(refreshedToken);
-    store.setExpiresAt(res.headers.get('X-Session-Expires-At'));
-    scheduleAutoLock();
-  }
+  captureRefreshedSession(res);
 
   if (res.status === 204) {
     return null;
   }
+
+  await throwIfError(res);
 
   const text = await res.text();
   let payload = null;
@@ -67,17 +102,6 @@ export async function request(method, path, { body, headers } = {}) {
     } catch {
       payload = text;
     }
-  }
-
-  if (!res.ok) {
-    const error = payload && typeof payload === 'object' ? payload.error : undefined;
-    const description = payload && typeof payload === 'object' ? payload.error_description : undefined;
-    // Fail-safe expiry path: end the session exactly once, centrally, before
-    // the error propagates — the token is cleared so nothing reuses it.
-    if (res.status === 401 && SESSION_ENDED_DESCRIPTIONS.has(description)) {
-      endSession();
-    }
-    throw new ApiError(res.status, error, description);
   }
 
   return payload;
@@ -91,3 +115,67 @@ export const put = (path, body, options) => request('PUT', path, { ...options, b
 // of silently reusing put() for a different HTTP method.
 export const patch = (path, body, options) => request('PATCH', path, { ...options, body });
 export const del = (path, options) => request('DELETE', path, options);
+
+// PRD 0025 (Secure Document Vault) — a multipart POST for the one route that
+// isn't a JSON body: routes/documents.js's upload takes a `ciphertext` file
+// part plus plaintext metadata fields. Deliberately does NOT set
+// Content-Type: the browser must generate the multipart boundary itself
+// (`multipart/form-data; boundary=...`); setting it by hand here would omit
+// or corrupt that boundary and the server would fail to parse the body. See
+// document-service.js's uploadDocument, the only caller.
+export async function postMultipart(path, formData) {
+  const outgoing = { Accept: 'application/json' };
+  const token = store.getToken();
+  if (token) {
+    outgoing.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: outgoing,
+    body: formData,
+  });
+
+  captureRefreshedSession(res);
+
+  if (res.status === 204) {
+    return null;
+  }
+
+  await throwIfError(res);
+
+  const text = await res.text();
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+  }
+
+  return payload;
+}
+
+// PRD 0025 — the download counterpart: routes/documents.js streams back raw
+// ciphertext bytes (application/octet-stream), not JSON, so this returns an
+// ArrayBuffer instead of a parsed payload. document-service.js's
+// downloadDocument decrypts it client-side; this function never touches
+// plaintext — it only ever sees ciphertext bytes.
+export async function getBinary(path) {
+  const outgoing = {};
+  const token = store.getToken();
+  if (token) {
+    outgoing.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'GET',
+    headers: outgoing,
+  });
+
+  captureRefreshedSession(res);
+  await throwIfError(res);
+
+  return res.arrayBuffer();
+}

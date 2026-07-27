@@ -39,6 +39,8 @@ const ACTIONS = Object.freeze({
   CREDENTIALS_LISTED: 'credentials.listed', // PRD 0019, whole-vault list — see the note below
   DOCUMENT_STORED: 'document.stored', // UC-04
   DOCUMENT_RETRIEVED: 'document.retrieved', // UC-06 / event 6
+  DOCUMENT_DELETED: 'document.deleted', // PRD 0025 — see the note below
+  DOCUMENTS_LISTED: 'documents.listed', // PRD 0025, whole-vault document list — see the note below
   PASSWORD_GENERATED: 'password.generated', // event 4
   HEALTH_REPORT_GENERATED: 'health_report.generated', // UC-05
   AUDIT_LOG_READ: 'audit_log.read', // an admin read a user's history
@@ -71,6 +73,15 @@ const ACTION_VALUES = Object.freeze(Object.values(ACTIONS));
 // One entry per list call, not one per returned item: see routes/
 // credentials.js's `GET /` for why per-item entries here would just trade
 // exfiltration-forensics value for unusable, routine-navigation noise.
+
+// `document.deleted` and `documents.listed` (PRD 0025) are the document
+// vault's exact counterparts of `credential.deleted` and `credentials.
+// listed` above, for the same two reasons respectively: deleting a document
+// is a destructive action functional-requirements.md never wrote a use case
+// for, and listing every stored document in one call is the same
+// bulk-ciphertext-exposure shape a stolen token could exploit against
+// `GET /api/documents` as it could against `GET /api/credentials`. See
+// routes/documents.js's `GET /` and `DELETE /:itemId`.
 
 // Express behind Cloud Run reports IPv4 peers as IPv4-mapped IPv6
 // (`::ffff:203.0.113.5`), and `net.isIP` classifies that as v6. Left alone,

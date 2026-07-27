@@ -63,6 +63,13 @@ resource "google_sql_user" "app" {
 # Encrypted document blobs (app-layer AES-256 encryption applies before
 # upload). Disposable environment: force_destroy so `terraform destroy`
 # removes the bucket even if objects remain inside.
+#
+# No age-based object-Delete lifecycle rule by design (PRD 0024): this is a
+# document *vault*, where a stored file (a passport scan, a tax return) must
+# still be there next year. An auto-delete rule would be silent, unrecoverable
+# data loss — versioning is off, so there is no soft-delete to fall back on.
+# Objects live until the user deletes them through the app; teardown still
+# wipes everything via force_destroy above.
 resource "google_storage_bucket" "documents" {
   project                     = var.project_id
   name                        = "${var.project_id}-${var.document_bucket_suffix}"
@@ -75,15 +82,8 @@ resource "google_storage_bucket" "documents" {
     enabled = false
   }
 
-  lifecycle_rule {
-    condition {
-      age = var.document_retention_days
-    }
-    action {
-      type = "Delete"
-    }
-  }
-
+  # Upload hygiene only (not data expiry): reap never-completed multipart
+  # uploads after 7 days so they don't accrue as unbilled-but-orphaned parts.
   lifecycle_rule {
     condition {
       age = 7

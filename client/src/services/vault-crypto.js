@@ -130,3 +130,40 @@ export async function decryptField(key, opaqueBase64) {
   const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
   return textDecoder.decode(plaintext);
 }
+
+// --- Binary variants (PRD 0025 — Secure Document Vault, UC-04) -------------
+//
+// Same packing scheme as encryptField/decryptField (random 12-byte IV,
+// followed by whatever AES-GCM emits), but over raw bytes instead of a text
+// string, and returning/consuming a Uint8Array rather than a base64 string —
+// a document's ciphertext is a binary multipart part, not a JSON field, so
+// there is no reason to burn 33% extra size on base64 the way encryptField
+// does for a short password string. document-crypto.js is the only caller;
+// it wraps these in Blob for upload/download.
+
+// Encrypts raw bytes client-side. Returns one opaque Uint8Array: iv (12
+// bytes) || ciphertext+tag — the exact shape routes/documents.js expects the
+// `ciphertext` multipart part to be: an opaque blob it stores and streams
+// back unexamined, never parsed.
+export async function encryptBytes(key, arrayBuffer) {
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, arrayBuffer);
+
+  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(ciphertext), iv.length);
+  return combined;
+}
+
+// Reverse of encryptBytes. Accepts a Uint8Array or ArrayBuffer (the download
+// path hands this an ArrayBuffer straight from api-client's getBinary).
+// Deliberately does not catch: a GCM auth failure (wrong key, or
+// tampered/corrupted ciphertext) propagates to the caller rather than being
+// swallowed into a false "success" with garbage bytes — same guarantee as
+// decryptField, extended to binary payloads.
+export async function decryptBytes(key, bytes) {
+  const combined = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const iv = combined.slice(0, IV_LENGTH_BYTES);
+  const ciphertext = combined.slice(IV_LENGTH_BYTES);
+  return crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+}

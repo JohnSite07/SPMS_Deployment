@@ -5,6 +5,8 @@ const { createUsersPort } = require('./ports/users');
 const { createVaultsPort } = require('./ports/vaults');
 const { createSessionsPort } = require('./ports/sessions');
 const { createCredentialsPort } = require('./ports/credentials');
+const { createDocumentsPort } = require('./ports/documents');
+const { createGcsBlobStore } = require('./ports/blob-store');
 const { createPasswordHealthPort } = require('./ports/password-health');
 const { createAuditReaderPort, createAuditAppend } = require('./ports/audit-reader');
 const { verifyPassword, hashPassword } = require('./services/password-hasher');
@@ -33,6 +35,12 @@ const users = createUsersPort();
 const vaults = createVaultsPort();
 const sessions = createSessionsPort();
 const credentials = createCredentialsPort();
+// PRD 0025 / UC-04/UC-06. createGcsBlobStore() throws if DOCUMENTS_BUCKET is
+// unset (Cloud Run injects it from the documents bucket Terraform output,
+// PRD 0024) — the same fail-loud posture as loadDbConfig()/loadJwtConfig()
+// above: a revision missing its storage config must not start serving
+// requests it cannot actually fulfil.
+const documents = createDocumentsPort({ blobStore: createGcsBlobStore() });
 const passwordHealth = createPasswordHealthPort();
 const auditReader = createAuditReaderPort();
 
@@ -70,6 +78,7 @@ createApp({
   vaults,
   sessions,
   credentials,
+  documents,
   passwordHealth,
   auditReader,
   audit,

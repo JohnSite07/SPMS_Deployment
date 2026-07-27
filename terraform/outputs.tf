@@ -26,3 +26,8 @@ output "artifact_registry_repo" {
   description = "Artifact Registry Docker push/pull endpoint CD builds/pushes SHA-tagged images to."
   value       = module.app.artifact_registry_repository_url
 }
+
+output "document_bucket_name" {
+  description = "Cloud Storage bucket holding encrypted document blobs — used by the SecureDocument feature (PRD 0024/0025) and the storage smoke test."
+  value       = module.data.document_bucket_name
+}
