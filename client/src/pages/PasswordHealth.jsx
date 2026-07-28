@@ -114,6 +114,16 @@ function StatTile({ variant, count, label }) {
   );
 }
 
+// Names the account a finding is about. The username is what the user
+// actually recognises ("which login do I go change?"); the item's title is
+// the fallback, since CREDENTIALS.username is NULLable, and the opaque
+// "Credential #<id>" is the last resort for a finding whose credential has
+// since been deleted (the API returns those with null labels rather than
+// dropping them — see ports/password-health.js's getLatestReport).
+function findingLabel(finding) {
+  return finding.username || finding.title || `Credential #${finding.itemId}`;
+}
+
 export default function PasswordHealth() {
   const navigate = useNavigate();
   // undefined = still loading; null = loaded, no report yet; object = report.
@@ -248,7 +258,7 @@ export default function PasswordHealth() {
                       <Badge bg={finding.status === 'REUSED' ? 'danger' : 'warning'} className="text-uppercase">
                         {finding.status}
                       </Badge>
-                      <span>Credential #{finding.itemId}</span>
+                      <span className="text-break">{findingLabel(finding)}</span>
                     </div>
                     <Button variant="outline-primary" size="sm" onClick={() => handleFixNow(finding.itemId)}>
                       Fix now

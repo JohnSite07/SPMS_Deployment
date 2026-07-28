@@ -33,6 +33,7 @@ A PRD must be **Approved** by the user before execution starts. Once executed, i
 | [0023](0023-two-step-login-screens.md) | Two-Step Login: Separate Master-Password and 2FA Screens | Done (retrospective) |
 | [0024](0024-secure-document-storage-infra-and-handoff.md) | Secure Document Storage: Infra Confirmation, Retention Fix & Developer Hand-off | Done |
 | [0025](0025-secure-document-code-implementation.md) | Secure Document Vault: Client-Side Encryption + Upload/List/Download/Delete (UC-04/UC-06) | Done |
+| [0026](0026-password-health-fair-bucket-and-per-site-findings.md) | Password Health: Fair Bucket, Per-Item Findings, Reuse-Rule Reconciliation | Draft (awaiting approval) |
 
 Execution order: 0001 → 0002 → 0003 → 0004 → 0005 → 0006 (0002 and 0003 are independent of each other; the rest are sequential). Each PRD is executed only after user approval, and each ends with an infra-reviewer pass and its documentation deliverables.
 

@@ -109,6 +109,49 @@ describe('PasswordHealth screen (PRD 0022, UC-05)', () => {
     );
   });
 
+  it('names each at-risk finding by its username, not an opaque item id', async () => {
+    getHealthReport.mockResolvedValueOnce({
+      report: {
+        reportId: 'r1',
+        overallScore: 50,
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        findings: [
+          { itemId: 'i1', status: 'OK', username: 'fine@example.com', title: 'Fine' },
+          { itemId: 'i2', status: 'WEAK', username: 'alice@example.com', title: 'Bank' },
+        ],
+        alerts: [],
+      },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('alice@example.com')).toBeTruthy();
+    expect(screen.queryByText(/credential #i2/i)).toBeNull();
+  });
+
+  it('falls back to the item title, then to the item id, when a finding has no username', async () => {
+    getHealthReport.mockResolvedValueOnce({
+      report: {
+        reportId: 'r1',
+        overallScore: 0,
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        findings: [
+          // A credential saved without a username: the title still names it.
+          { itemId: 'i1', status: 'WEAK', username: null, title: 'Old router' },
+          // A finding whose credential was deleted after the report was
+          // generated — the API returns it with both labels null.
+          { itemId: 'i2', status: 'REUSED', username: null, title: null },
+        ],
+        alerts: [],
+      },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Old router')).toBeTruthy();
+    expect(screen.getByText('Credential #i2')).toBeTruthy();
+  });
+
   it('shows a positive message when every finding is OK', async () => {
     getHealthReport.mockResolvedValueOnce({
       report: {
