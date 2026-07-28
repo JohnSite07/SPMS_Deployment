@@ -209,6 +209,52 @@ describe('GET /api/password-health (UC-05)', () => {
     expect(db.actions().filter((a) => a === ACTIONS.HEALTH_REPORT_GENERATED)).toHaveLength(1);
   });
 
+  it('labels each finding with its credential\'s username and title, so the health screen can name it', async () => {
+    const { app } = build();
+    const token = await login(app);
+    const item = await addCredential(app, token, {
+      ...NEW_CREDENTIAL,
+      title: 'Bank',
+      username: 'alice@example.com',
+    });
+
+    await postHealthReport(app, token, {
+      overallScore: 0,
+      findings: [{ itemId: item.body.itemId, status: 'WEAK' }],
+    });
+
+    const res = await getHealthReport(app, token);
+
+    expect(res.status).toBe(200);
+    expect(res.body.report.findings[0]).toMatchObject({
+      itemId: item.body.itemId,
+      status: 'WEAK',
+      username: 'alice@example.com',
+      title: 'Bank',
+    });
+  });
+
+  it('still returns a finding whose credential has since been deleted, with null labels', async () => {
+    const { app } = build();
+    const token = await login(app);
+    const item = await addCredential(app, token);
+
+    await postHealthReport(app, token, {
+      overallScore: 0,
+      findings: [{ itemId: item.body.itemId, status: 'WEAK' }],
+    });
+    await request(app)
+      .delete(`/api/credentials/${item.body.itemId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    const res = await getHealthReport(app, token);
+
+    // The finding survives the credential — dropping it would make the
+    // screen's counts disagree with the score the report was generated with.
+    expect(res.body.report.findings).toHaveLength(1);
+    expect(res.body.report.findings[0]).toMatchObject({ status: 'WEAK', username: null, title: null });
+  });
+
   it("does not return another user's report", async () => {
     const { app } = build();
     const ownerToken = await login(app);

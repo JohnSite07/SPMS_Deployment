@@ -460,7 +460,19 @@ function createFakeDatabase({
         vaultId: report.vaultId,
         overallScore: report.overallScore,
         generatedAt: report.generatedAt,
-        findings: report.findings.map((f) => ({ ...f })),
+        // Mirrors the real port's join back to CREDENTIALS/VAULT_ITEMS: each
+        // finding carries the username (title as fallback) of the credential
+        // it names, so the health screen can label it. A credential deleted
+        // since the report was generated leaves both null rather than
+        // dropping the finding — same as the real query's LEFT JOIN.
+        findings: report.findings.map((f) => {
+          const credential = state.credentials.get(f.itemId);
+          return {
+            ...f,
+            username: credential?.username ?? null,
+            title: credential?.title ?? null,
+          };
+        }),
         alerts: alerts.map((a) => ({ ...a })),
       };
     },

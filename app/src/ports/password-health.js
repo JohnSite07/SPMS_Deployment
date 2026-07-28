@@ -36,8 +36,20 @@ class ItemOwnershipError extends Error {
   }
 }
 
+// `username`/`title` come along so the health screen can name the account a
+// finding is about ("alice@example.com — weak") rather than an opaque
+// "Credential #23". Both are plaintext columns the server already holds
+// (only `encrypted_password` is ciphertext), so returning them alongside a
+// label the client itself computed discloses nothing new — the
+// zero-knowledge boundary is untouched. `username` is NULLable, hence
+// `title` as the fallback label.
 function mapFinding(row) {
-  return { itemId: String(row.item_id), status: row.status };
+  return {
+    itemId: String(row.item_id),
+    status: row.status,
+    username: row.username ?? null,
+    title: row.title ?? null,
+  };
 }
 
 function mapAlert(row) {
@@ -182,8 +194,19 @@ function createPasswordHealthPort({ pool = getPool(), transaction = sharedTransa
         return null;
       }
 
+      // Joined back to the credential each finding names, for its username
+      // (title as fallback) — see mapFinding(). LEFT JOIN, not INNER: a
+      // finding whose credential has since been deleted must still be
+      // returned, with a null label, rather than silently vanishing — the
+      // counts on the health screen are derived from these rows, and a
+      // disappearing finding would make them disagree with the overall score
+      // the report was generated with.
       const [findingRows] = await pool.execute(
-        'SELECT item_id, status FROM REPORT_FINDINGS WHERE report_id = ?',
+        `SELECT rf.item_id, rf.status, vi.title, c.username
+           FROM REPORT_FINDINGS rf
+           LEFT JOIN VAULT_ITEMS vi ON vi.item_id = rf.item_id
+           LEFT JOIN CREDENTIALS c ON c.item_id = rf.item_id
+          WHERE rf.report_id = ?`,
         [report.report_id]
       );
       // Unread only, matching DATABASE.md's catalogue query for this table
